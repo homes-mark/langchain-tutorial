@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="agent">
+<title>07 智能体（Agent）· LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html" class="active">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>07 智能体（Agent）</h1>
+      <div class="meta">
+        <span class="badge phase">阶段二 · 进阶</span>
+        <span class="badge difficulty-进阶">难度：进阶</span>
+        <span class="badge preq">前置：06 工具调用</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>理解 Agent 与普通链的本质区别</li>
+          <li>用 create_agent 构建自主决策循环</li>
+          <li>掌握 ReAct 循环与多工具协作</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>工具定义与绑定（06）</li>
+          <li>记忆、消息模型（04）</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="what-is-agent">7.1 链 vs 智能体</h2>
+    <p>链是<strong>固定的</strong>流水线：步骤和顺序在写代码时就定死了。智能体则让模型<strong>自主决策</strong>：根据当前情况，动态决定「调用哪个工具、调用几次、什么时候停、什么时候给出最终答案」。</p>
+    <table>
+      <thead><tr><th>特性</th><th>链（Chain）</th><th>智能体（Agent）</th></tr></thead>
+      <tbody>
+        <tr><td>控制流</td><td>固定、可预测</td><td>动态、由模型决定</td></tr>
+        <tr><td>适用场景</td><td>流程明确的批量任务</td><td>开放、需自主决策的任务</td></tr>
+        <tr><td>成本/延迟</td><td>低、可预估</td><td>高、不确定（多轮）</td></tr>
+        <tr><td>可调试性</td><td>好</td><td>较难</td></tr>
+      </tbody>
+    </table>
+    <p><strong>原则：能用链解决的，不要用 Agent。</strong>Agent 灵活性高，但成本、延迟、不可预测性也高。</p>
+
+    <h2 id="react">7.2 ReAct 循环</h2>
+    <p>主流 Agent 采用 <strong>ReAct（Reasoning + Acting）</strong> 模式，核心是一个循环：</p>
+    <ol>
+      <li><strong>Thought（思考）</strong>：模型分析当前情况，决定下一步。</li>
+      <li><strong>Action（行动）</strong>：调用某个工具，或输出最终答案。</li>
+      <li><strong>Observation（观察）</strong>：拿到工具返回结果，回到第 1 步。</li>
+    </ol>
+    <p>这个循环持续到模型决定「给出最终答案」为止。</p>
+
+    <div class="concept-map">
+      <svg viewBox="0 0 560 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <defs><marker id="agArrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1c7c54"/></marker></defs>
+        <style>.bb{fill:#e6f4ee;stroke:#1c7c54;stroke-width:1.5px;rx:10px} .tt{font-family:sans-serif;font-size:13px;fill:#24292f;text-anchor:middle;font-weight:700} .ee{stroke:#1c7c54;stroke-width:1.5px;fill:none;marker-end:url(#agArrow)} .ll{font-size:11px;fill:#6b7280}</style>
+        <rect class="bb" x="30" y="70" width="130" height="60"/><text class="tt" x="95" y="105">模型思考</text>
+        <rect class="bb" x="230" y="70" width="130" height="60"/><text class="tt" x="295" y="105">调用工具</text>
+        <rect class="bb" x="230" y="10" width="130" height="40" rx="10"/><text class="tt" x="295" y="35" style="fill:#1c7c54">最终答案</text>
+        <rect class="bb" x="430" y="70" width="110" height="60"/><text class="tt" x="485" y="105">执行结果</text>
+        <path class="ee" d="M160,100 L230,100"/>
+        <path class="ee" d="M295,70 L295,50"/>
+        <path class="ee" d="M360,100 L430,100"/>
+        <path class="ee" d="M485,130 L485,160 L95,160 L95,130"/>
+        <text class="ll" x="195" y="93">是</text>
+        <text class="ll" x="320" y="45">直接回答</text>
+        <text class="ll" x="280" y="175">观察结果，继续循环</text>
+      </svg>
+    </div>
+
+    <h2 id="create-agent">7.3 用 create_agent 构建</h2>
+    <p>LangChain 1.x 推荐用 <code>langchain.agents.create_agent</code>，它内部封装了 ReAct 循环与工具执行，返回一个可运行的 Agent：</p>
+
+    <pre><code data-lang="python">from langchain_openai import ChatOpenAI
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+@tool
+def get_weather(city: str) -> str:
+    """查询城市天气。city 为中文城市名。"""
+    db = {"北京": "晴，25°C", "上海": "多云，28°C", "深圳": "阵雨，30°C"}
+    return db.get(city, f"暂无{city}数据")
+
+@tool
+def multiply(a: float, b: float) -> str:
+    """计算两数乘积。"""
+    return f"{a} × {b} = {a * b}"
+
+agent = create_agent(
+    model=model,
+    tools=[get_weather, multiply],
+    system_prompt="你是乐于助人的助手，能查天气、做计算。",
+)
+
+result = agent.invoke({
+    "messages": [("user", "北京和上海的温差是多少？先查两地天气，再计算。")],
+})
+print(result["messages"][-1].content)</code></pre>
+
+    <pre class="output"><code>北京今天晴 25°C，上海多云 28°C，
+上海比北京高 3°C（温差为 3 度）。</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 关键点</span>
+      这个例子展示了 Agent 的核心价值：模型<strong>自主</strong>判断需要先查两个城市天气（两次工具调用），再做计算。而普通链无法处理这种「根据问题动态决定调用几次」的场景。
+    </div>
+
+    <h2 id="intermediate-steps">7.4 观察中间步骤</h2>
+    <p>调试 Agent 时，可以查看完整的消息历史，理解模型的决策过程：</p>
+
+    <pre><code data-lang="python">for msg in result["messages"]:
+    role = type(msg).__name__
+    if hasattr(msg, "tool_calls") and msg.tool_calls:
+        for tc in msg.tool_calls:
+            print(f"[{role}] 调用工具 {tc['name']}，参数 {tc['args']}")
+    else:
+        print(f"[{role}] {str(msg.content)[:60]}")
+</code></pre>
+
+    <pre class="output"><code>[HumanMessage] 北京和上海的温差是多少？...
+[AIMessage] 调用工具 get_weather，参数 {'city': '北京'}
+[AIMessage] 调用工具 get_weather，参数 {'city': '上海'}
+[ToolMessage] 晴，25°C
+[ToolMessage] 多云，28°C
+[AIMessage] 北京今天晴 25°C，上海多云 28°C，...</code></pre>
+
+    <h2 id="pitfalls">7.5 误区与最佳实践</h2>
+
+    <div class="callout danger">
+      <span class="ct-title">❌ 误区：无限循环与失控</span>
+      Agent 可能在多个工具间反复横跳、无法收敛。务必设置<strong>最大迭代次数（max_iterations）</strong>，并对死循环、超时做兜底处理。
+    </div>
+
+    <div class="callout danger">
+      <span class="ct-title">❌ 误区：成本失控</span>
+      每次工具调用都要重新把<strong>整个历史</strong>发给模型，多轮循环 token 消耗巨大。应：精简 system 提示、控制历史长度、用便宜模型做简单步骤。
+    </div>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践</span>
+      <ul>
+        <li>给 Agent 一个<strong>清晰的 system_prompt</strong>，明确边界与行为规范。</li>
+        <li>工具要<strong>职责单一、描述精准</strong>（见 06 章）。</li>
+        <li>对危险操作加<strong>人工确认</strong>与权限控制。</li>
+        <li>记录完整的执行轨迹，便于审计与调试。</li>
+      </ul>
+    </div>
+
+    <h2 id="agent-with-memory">7.6 带记忆的 Agent（完整实现）</h2>
+    <p>Agent 默认无状态。要让它记住多轮对话，用 <code>RunnableWithMessageHistory</code> 包裹。注意 Agent 的输入/历史键都是 <code>messages</code>：</p>
+
+    <pre><code data-lang="python">from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+
+store = {}
+
+def get_history(session_id: str):
+    if session_id not in store:
+        store[session_id] = InMemoryChatMessageHistory()
+    return store[session_id]
+
+agent_with_memory = RunnableWithMessageHistory(
+    agent,
+    get_history,
+    input_messages_key="messages",   # Agent 输入键
+    history_messages_key="messages", # 历史注入键（相同）
+)
+
+def ask(session_id: str, text: str) -> str:
+    r = agent_with_memory.invoke(
+        {"messages": [("user", text)]},
+        config={"configurable": {"session_id": session_id}},
+    )
+    return r["messages"][-1].content
+
+print(ask("u1", "我住在深圳"))
+print(ask("u1", "帮我查一下我所在城市的天气"))  # 需要记住"我=深圳"</code></pre>
+
+    <pre class="output"><code>好的，已记住您住在深圳。
+深圳今天阵雨，气温 30°C。</code></pre>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 关键区别：键名是 messages</span>
+      普通链用 <code>input_messages_key="input"</code>，而 <strong>Agent 的输入键是 <code>messages</code></strong>（一个消息列表）。两处键名都要写 <code>"messages"</code>，否则会报 <code>KeyError</code>。这是最常见的坑。
+    </div>
+
+    <h2 id="agent-types">7.7 不同 Agent 范式</h2>
+    <p>除了最基础的 ReAct，LangGraph 生态还支持更高级的 Agent 架构：</p>
+    <table>
+      <thead><tr><th>范式</th><th>特点</th><th>适用场景</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ReAct</strong></td><td>思考-行动-观察循环</td><td>通用、最简单</td></tr>
+        <tr><td><strong>Plan-and-Execute</strong></td><td>先规划再逐步执行</td><td>复杂多步任务</td></tr>
+        <tr><td><strong>多智能体（Supervisor）</strong></td><td>主管 Agent 调度多个子 Agent</td><td>分工明确的复杂系统</td></tr>
+        <tr><td><strong>结构化输出 Agent</strong></td><td>强制按 schema 输出</td><td>需精确格式的场景</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="exercise">7.8 动手练习</h2>
+
+    <div class="exercise">
+      <div class="ex-title">练习 7.1：构建双工具 Agent <span class="ex-level">（进阶）</span></div>
+      <p>用 <code>create_agent</code> 构建一个拥有「查天气」和「计算器」两个工具的 Agent，处理需要多工具协作的问题。</p>
+      <div class="verify"><strong>验证方法：</strong>问「上海和深圳哪个更热？温差多少度？」，Agent 能自动调用 get_weather 两次 + 计算，给出正确结论。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex7.1"><label>已完成练习 7.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 7.2：追踪决策过程 <span class="ex-level">（进阶）</span></div>
+      <p>打印 Agent 的完整消息历史，还原它每一步的思考与工具调用。</p>
+      <div class="verify"><strong>验证方法：</strong>能看到「调用工具 → 观察结果 → 继续/结束」的完整链路，理解 ReAct 循环。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex7.2"><label>已完成练习 7.2</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 7.3：Agent + 记忆 <span class="ex-level">（高级）</span></div>
+      <p>把第 04 章的 <code>RunnableWithMessageHistory</code> 与 Agent 结合，让 Agent 在多轮对话中记住上下文。</p>
+      <div class="verify"><strong>验证方法：</strong>第一轮说「我住在深圳」，第二轮问「查一下我所在城市的天气」，Agent 能结合记忆正确调用工具。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex7.3"><label>已完成练习 7.3</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 7.4：限制 Agent 行为 <span class="ex-level">（高级）</span></div>
+      <p>通过精心设计 <code>system_prompt</code> 约束 Agent：拒绝回答与工具无关的问题、限定工具使用次数，观察行为变化。</p>
+      <div class="verify"><strong>验证方法：</strong>问「帮我写一首诗」（与工具无关），Agent 能礼貌拒绝或引导回正题，而非乱调工具。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex7.4"><label>已完成练习 7.4</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="06-tools.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">06 工具调用（Tool Calling）</span></a>
+      <a href="08-project.html" class="next"><span class="dir">下一页 →</span><span class="lbl">08 企业级 Agent 实战</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

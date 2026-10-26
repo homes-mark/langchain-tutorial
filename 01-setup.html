@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="setup">
+<title>01 环境搭建与快速上手 · LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html" class="active">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>01 环境搭建与快速上手</h1>
+      <div class="meta">
+        <span class="badge phase">阶段一 · 入门</span>
+        <span class="badge difficulty-入门">难度：入门</span>
+        <span class="badge preq">前置：Python 基础</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>安装 langchain 1.2 及依赖</li>
+          <li>配置 API Key，完成第一个 LLM 调用</li>
+          <li>理解消息模型与温度参数</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>Python 虚拟环境与 pip</li>
+          <li>环境变量的基本用法</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="install">1.1 安装</h2>
+    <p>建议在<strong>虚拟环境</strong>中安装，避免污染全局环境。以下命令以 Windows/macOS/Linux 通用。</p>
+    <pre><code data-lang="python"># 创建并激活虚拟环境
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+# source .venv/bin/activate
+
+# 安装 LangChain 1.2（含核心与常用集成）
+pip install "langchain>=1.2,<2.0" "langchain-core>=1.2,<2.0"
+
+# 安装 OpenAI 集成（用于调用 OpenAI 或兼容端点）
+pip install "langchain-openai>=1.0"</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 依赖版本</span>
+      本教程所有示例均在以下版本验证：<code>langchain==1.2.x</code>、<code>langchain-core==1.2.x</code>、<code>langchain-openai==1.0.x</code>、<code>langchain-community==1.0.x</code>。可用 <code>pip show langchain</code> 查看实际安装版本。
+    </div>
+
+    <h2 id="api-key">1.2 配置 API Key</h2>
+    <p>不要将密钥硬编码在代码里，应通过<strong>环境变量</strong>管理。创建一个 <code>.env</code> 文件（并加入 <code>.gitignore</code>）：</p>
+    <pre><code data-lang="python"># .env 文件内容
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+OPENAI_BASE_URL=https://api.openai.com/v1   # 可选：国内兼容端点时填写</code></pre>
+
+    <p>加载环境变量需要一个轻量库 <code>python-dotenv</code>：</p>
+    <pre><code data-lang="python">pip install python-dotenv</code></pre>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 安全提示</span>
+      绝不把 API Key 提交到 Git 仓库。务必把 <code>.env</code> 加入 <code>.gitignore</code>。生产环境建议使用云平台的密钥管理服务（如 AWS Secrets Manager、Vault），而非环境变量明文存储。
+    </div>
+
+    <h2 id="first-call">1.3 第一个 LLM 调用</h2>
+    <p>LangChain 的核心抽象是 <code>BaseChatModel</code>。下面创建一个聊天模型并调用：</p>
+    <pre><code data-lang="python">import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+
+load_dotenv()  # 读取 .env 中的变量
+
+# 创建模型实例
+model = ChatOpenAI(
+    model="gpt-4o-mini",       # 模型名称
+    temperature=0.7,           # 随机性：0 更确定，1 更有创造性
+    # base_url=os.getenv("OPENAI_BASE_URL"),  # 使用兼容端点时取消注释
+)
+
+# 调用：传入一个消息列表
+response = model.invoke("用一句话介绍你自己")
+print(response.content)</code></pre>
+
+    <pre class="output"><code>我是一个由人工智能技术驱动的语言模型助手，
+旨在帮助用户解答问题、提供信息和完成各种任务。</code></pre>
+
+    <h3>消息模型（Message Model）</h3>
+    <p>聊天模型支持三种角色消息，这是理解后续所有高级特性的基础：</p>
+    <pre><code data-lang="python">from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+messages = [
+    SystemMessage(content="你是一位严谨的 Python 技术讲师，回答简洁准确。"),
+    HumanMessage(content="什么是列表推导式？"),
+]
+resp = model.invoke(messages)
+print(resp.content)
+print(type(resp))  # langchain_core.messages.ai.AIMessage</code></pre>
+
+    <h2 id="params">1.4 关键参数</h2>
+    <table>
+      <thead><tr><th>参数</th><th>作用</th><th>取值建议</th></tr></thead>
+      <tbody>
+        <tr><td><code>temperature</code></td><td>采样随机性</td><td>代码生成 0–0.2；创意写作 0.8–1.0</td></tr>
+        <tr><td><code>max_tokens</code></td><td>最大输出 token 数</td><td>按任务估算，避免截断</td></tr>
+        <tr><td><code>model</code></td><td>模型名称</td><td>成本与能力权衡</td></tr>
+        <tr><td><code>timeout</code></td><td>请求超时</td><td>默认 600s，可调小</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践</span>
+      建议在 <code>ChatOpenAI</code> 之上再包一层 <code>model.bind(...)</code> 或自定义配置，将模型参数集中管理，方便后续替换模型或统一调参，避免散落在代码各处。
+    </div>
+
+    <h2 id="compat">1.5 切换国内/兼容端点</h2>
+    <p>如果你的服务使用兼容 OpenAI 接口的端点（如 DeepSeek、通义千问、Kimi、本地 Ollama 等），只需修改 <code>base_url</code> 和 <code>api_key</code>：</p>
+    <pre><code data-lang="python">import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+
+load_dotenv()
+
+# 以 DeepSeek 为例：兼容 OpenAI 协议
+model = ChatOpenAI(
+    model="deepseek-chat",                       # 换成目标模型名
+    base_url="https://api.deepseek.com",         # 换成服务商端点
+    api_key=os.getenv("DEEPSEEK_API_KEY"),       # 换成对应密钥
+    temperature=0.7,
+)
+
+print(model.invoke("你好，请自我介绍").content)</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 本地模型（Ollama）</span>
+      想完全离线、免费调试？可以用 <a href="10-appendix.html">附录</a> 提到的本地模型，配合 <code>ChatOllama</code>：
+      <pre><code data-lang="python">from langchain_ollama import ChatOllama
+model = ChatOllama(model="llama3.1", temperature=0)</code></pre>
+      需要先安装 <code>pip install langchain-ollama</code> 并在本地启动 Ollama 服务。
+    </div>
+
+    <h2 id="project-scaffold">1.6 完整的项目初始化脚本</h2>
+    <p>下面是一份可直接复制运行的初始化脚本，帮你一键搭好项目骨架（供后续章节复用）：</p>
+    <pre><code data-lang="python"># init_project.py —— 一键初始化教程项目
+import os
+import subprocess
+import sys
+
+PROJECT = "langchain-tutorial-lab"
+
+def run(cmd):
+    print(f">>> {cmd}")
+    subprocess.run(cmd, shell=True, check=True)
+
+def main():
+    # 1. 创建目录与虚拟环境
+    os.makedirs(PROJECT, exist_ok=True)
+    os.chdir(PROJECT)
+    run(f"{sys.executable} -m venv .venv")
+
+    # 2. 安装依赖（Windows 用 .venv\\Scripts\\pip）
+    pip = ".venv\\Scripts\\pip" if os.name == "nt" else ".venv/bin/pip"
+    run(f"{pip} install langchain langchain-core langchain-openai python-dotenv")
+
+    # 3. 写入 .env 模板
+    with open(".env", "w", encoding="utf-8") as f:
+        f.write("OPENAI_API_KEY=sk-请替换为你的密钥\n")
+
+    # 4. 写入 .gitignore
+    with open(".gitignore", "w", encoding="utf-8") as f:
+        f.write(".env\n.venv/\n__pycache__/\n*.pyc\n")
+
+    print("\n✅ 项目初始化完成！")
+    print("下一步：编辑 .env 填入真实 API Key，然后开始写代码。")
+
+if __name__ == "__main__":
+    main()</code></pre>
+
+    <h2 id="exercise">1.7 动手练习</h2>
+
+    <div class="exercise">
+      <div class="ex-title">练习 1.1：搭建环境并完成首次调用 <span class="ex-level">（入门）</span></div>
+      <p>创建虚拟环境，安装 langchain 1.2，配置 API Key，运行上面的示例代码。</p>
+      <div class="verify">
+        <strong>验证方法：</strong>控制台成功打印出模型的自我介绍，且 <code>type(response)</code> 为 <code>AIMessage</code>。
+      </div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex1.1"><label>已完成练习 1.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 1.2：对比 temperature 的影响 <span class="ex-level">（入门）</span></div>
+      <p>分别用 <code>temperature=0.0</code> 和 <code>temperature=1.0</code> 让模型「为一家咖啡店写 3 句广告语」，各运行 2 次。</p>
+      <div class="verify">
+        <strong>验证方法：</strong>观察 temperature=0 时两次输出高度相似，temperature=1 时差异明显，理解随机性参数的作用。
+      </div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex1.2"><label>已完成练习 1.2</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 1.3：切换到兼容端点 <span class="ex-level">（入门）</span></div>
+      <p>把 <code>ChatOpenAI</code> 的 <code>base_url</code> 指向一个兼容 OpenAI 协议的服务（如 DeepSeek 或本地 Ollama），完成一次调用。</p>
+      <div class="verify">
+        <strong>验证方法：</strong>打印 <code>model.model_name</code> 确认模型名正确，且 <code>invoke</code> 返回了对应模型的结果。
+      </div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex1.3"><label>已完成练习 1.3</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 1.4：理解消息对象 <span class="ex-level">（入门）</span></div>
+      <p>分别打印 <code>HumanMessage</code>、<code>SystemMessage</code>、<code>AIMessage</code> 对象的 <code>content</code>、<code>type</code> 属性，并尝试给消息附加 <code>name</code> 与 <code>additional_kwargs</code>。</p>
+      <div class="verify">
+        <strong>验证方法：</strong>能说出三种消息的 <code>type</code> 值（human/system/ai），理解消息不仅是「文本」，还携带角色与元数据。
+      </div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex1.4"><label>已完成练习 1.4</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="index.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">00 首页与学习路径</span></a>
+      <a href="02-chain.html" class="next"><span class="dir">下一页 →</span><span class="lbl">02 链（Chain）</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

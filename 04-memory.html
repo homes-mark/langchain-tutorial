@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="memory">
+<title>04 记忆（Memory）· LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html" class="active">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>04 记忆（Memory）</h1>
+      <div class="meta">
+        <span class="badge phase">阶段一 · 入门</span>
+        <span class="badge difficulty-入门">难度：入门</span>
+        <span class="badge preq">前置：02 链、03 提示模板</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>理解为什么模型「无状态」需要记忆</li>
+          <li>掌握缓冲、窗口、摘要三种记忆策略</li>
+          <li>会管理历史消息与持久化</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>消息角色与 <code>MessagesPlaceholder</code></li>
+          <li>链式编排</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="why-memory">4.1 模型是无状态的</h2>
+    <p>LLM 本身<strong>不记得上次对话</strong>。每次 <code>invoke</code> 都是独立请求。所谓「记忆」，本质是<strong>把历史消息重新塞进下一次请求的上下文</strong>。因此记忆 = 历史消息的管理策略。</p>
+
+    <pre><code data-lang="python"># 两次独立调用，模型并不知道前一次说了什么
+model.invoke("我叫小明")
+model.invoke("我叫什么？")   # 模型无法回答</code></pre>
+
+    <h2 id="buffer">4.2 缓冲记忆（最直观）</h2>
+    <p>最简单的方式：手动维护一个消息列表，每次把新消息追加进去，全部一起发送。LangChain 1.x 中，推荐用 <code>InMemoryChatMessageHistory</code> + <code>RunnableWithMessageHistory</code>：</p>
+
+    <pre><code data-lang="python">from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_openai import ChatOpenAI
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "你是友善的助手。"),
+    MessagesPlaceholder("history"),
+    ("human", "{input}"),
+])
+chain = prompt | model
+
+# 会话历史存储（按 session_id 区分不同用户/会话）
+store = {}
+
+def get_history(session_id: str):
+    if session_id not in store:
+        store[session_id] = InMemoryChatMessageHistory()
+    return store[session_id]
+
+with_history = RunnableWithMessageHistory(
+    chain,
+    get_history,
+    input_messages_key="input",     # 输入中哪个键是用户消息
+    history_messages_key="history", # 历史注入到哪个占位符
+)
+
+# 第一轮
+r1 = with_history.invoke({"input": "我叫小明"}, config={"configurable": {"session_id": "u1"}})
+print(r1.content)
+
+# 第二轮：模型记得名字
+r2 = with_history.invoke({"input": "我叫什么？"}, config={"configurable": {"session_id": "u1"}})
+print(r2.content)   # 小明</code></pre>
+
+    <pre class="output"><code>你好，小明！很高兴认识你。
+你叫小明。</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 session_id 的作用</span>
+      <code>configurable.session_id</code> 是区分不同会话的「钥匙」。不同用户、不同对话用不同 id，历史就互不串扰。这是生产环境中多用户隔离的关键。
+    </div>
+
+    <h2 id="window">4.3 窗口记忆（控制长度）</h2>
+    <p>缓冲记忆的问题：对话越长，token 越多，最终<strong>超出上下文窗口</strong>，且成本线性上升。窗口记忆只保留最近 N 轮：</p>
+
+    <pre><code data-lang="python">from langchain_core.messages import trim_messages
+
+# 在链中插入裁剪步骤，只保留最近 4 条消息
+from langchain_core.runnables import RunnableLambda
+
+def trim_history(messages: list) -> list:
+    return messages[-4:]   # 只保留最近 4 条
+
+# 提示：system + 裁剪后的历史 + 用户输入
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "你是友善的助手。"),
+    MessagesPlaceholder("history"),
+    ("human", "{input}"),
+])</code></pre>
+
+    <p>更推荐用 LangChain 提供的 <code>trim_messages</code>，它支持按 token 数裁剪，而非简单按条数：</p>
+    <pre><code data-lang="python">from langchain_core.messages import trim_messages
+
+trimmer = trim_messages(
+    max_tokens=500,           # 按 token 上限裁剪
+    strategy="last",          # 保留最后的
+    token_counter=model,      # 用模型的 tokenizer 计数
+    include_system=True,      # 始终保留 system 消息
+)</code></pre>
+
+    <h2 id="summary">4.4 摘要记忆（压缩上下文）</h2>
+    <p>窗口记忆会「遗忘」早期信息。摘要记忆用模型把历史对话<strong>压缩成一段摘要</strong>，既保留关键信息又控制长度。这是长期对话的常用方案：</p>
+
+    <pre><code data-lang="python">from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+def summarize(history: list) -> str:
+    """把对话历史压缩成摘要"""
+    conv = "\n".join(f"{'用户' if isinstance(m, HumanMessage) else '助手'}: {m.content}" for m in history)
+    summary_prompt = ChatPromptTemplate.from_template(
+        "请把下面的对话总结为一段不超过 100 字的摘要，保留关键事实（如人名、偏好、任务）：\n{conv}"
+    )
+    return (summary_prompt | model).invoke({"conv": conv}).content
+
+# 在每轮开始时，将摘要作为 system 的一部分
+summary = summarize(history)
+final_prompt = ChatPromptTemplate.from_messages([
+    ("system", "你是友善的助手。对话历史摘要：{summary}"),
+    MessagesPlaceholder("history"),
+    ("human", "{input}"),
+])</code></pre>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 常见误区：三种策略的取舍</span>
+      <table>
+        <tr><th>策略</th><th>优点</th><th>缺点</th></tr>
+        <tr><td>缓冲</td><td>完整、无损</td><td>token 无限增长</td></tr>
+        <tr><td>窗口</td><td>恒定开销</td><td>丢失早期信息</td></tr>
+        <tr><td>摘要</td><td>压缩保留要点</td><td>有损、需额外一次模型调用</td></tr>
+      </table>
+      实际生产常<strong>组合使用</strong>：近期 N 轮保留原文 + 更早的用摘要，兼顾细节与长度。
+    </div>
+
+    <h2 id="persist">4.5 持久化（跨重启保存）</h2>
+    <p><code>InMemoryChatMessageHistory</code> 重启即丢。生产环境需持久化到数据库或 Redis。核心是替换 <code>get_history</code> 的实现：</p>
+
+    <pre><code data-lang="python"># 伪代码：接入 Redis 持久化
+import redis, json
+
+r = redis.Redis(host="localhost", port=6379)
+
+def get_history(session_id: str):
+    # 从 Redis 读取，返回实现了 BaseChatMessageHistory 的对象
+    # 实际项目可用 langchain 社区的 RedisChatMessageHistory
+    from langchain_community.chat_message_histories import RedisChatMessageHistory
+    return RedisChatMessageHistory(session_id=session_id, redis_client=r)</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：安全与隐私</span>
+      对话历史可能含敏感信息（个人信息、业务机密）。持久化时务必：<strong>加密存储、设置过期时间（TTL）、遵守数据合规（如 GDPR/个保法）</strong>，并为用户提供删除会话的入口。
+    </div>
+
+    <h2 id="strategy-map">4.7 记忆策略选择决策图</h2>
+    <p>面对不同场景，如何选择记忆策略？用下面的决策流程快速判断：</p>
+
+    <div class="concept-map">
+      <svg viewBox="0 0 900 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <defs><marker id="memArrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1c7c54"/></marker></defs>
+        <style>.mb{fill:#e6f4ee;stroke:#1c7c54;stroke-width:1.5px;rx:10px} .mt{font-family:sans-serif;font-size:12px;fill:#24292f;text-anchor:middle;font-weight:700} .me{stroke:#1c7c54;stroke-width:1.5px;fill:none;marker-end:url(#memArrow)} .ml{font-size:11px;fill:#6b7280;text-anchor:middle}</style>
+
+        <rect class="mb" x="340" y="10" width="220" height="50"/><text class="mt" x="450" y="40">对话需要跨轮记忆吗？</text>
+
+        <rect class="mb" x="40" y="110" width="200" height="50"/><text class="mt" x="140" y="140">否 → 无需记忆</text>
+        <rect class="mb" x="360" y="110" width="200" height="50"/><text class="mt" x="460" y="140">是 → 会话有多长？</text>
+
+        <rect class="mb" x="30" y="210" width="180" height="50"/><text class="mt" x="120" y="240">短 → 缓冲记忆</text>
+        <rect class="mb" x="250" y="210" width="180" height="50"/><text class="mt" x="340" y="240">长 → 需控 token</text>
+        <rect class="mb" x="470" y="210" width="180" height="50"/><text class="mt" x="560" y="240">跨会话 → 持久化</text>
+
+        <rect class="mb" x="60" y="300" width="200" height="50"/><text class="mt" x="160" y="330">只关心近期 → 窗口</text>
+        <rect class="mb" x="300" y="300" width="200" height="50"/><text class="mt" x="400" y="330">需长期要点 → 摘要</text>
+        <rect class="mb" x="540" y="300" width="200" height="50"/><text class="mt" x="640" y="330">组合：窗口+摘要</text>
+
+        <path class="me" d="M450,60 L450,85 L140,85 L140,110"/>
+        <path class="me" d="M450,60 L460,110"/>
+        <path class="me" d="M460,160 L460,185 L120,185 L120,210"/>
+        <path class="me" d="M460,160 L460,185 L340,185 L340,210"/>
+        <path class="me" d="M460,160 L460,185 L560,185 L560,210"/>
+        <path class="me" d="M340,260 L340,280 L160,280 L160,300"/>
+        <path class="me" d="M340,260 L340,280 L400,280 L400,300"/>
+        <path class="me" d="M560,260 L560,280 L640,280 L640,300"/>
+
+        <text class="ml" x="295" y="35">是/否</text>
+        <text class="ml" x="300" y="180">按长度</text>
+        <text class="ml" x="250" y="275">策略</text>
+      </svg>
+    </div>
+
+    <h2 id="combine-memory">4.8 组合记忆完整实现</h2>
+    <p>生产中最实用的是「摘要 + 窗口」组合：早期对话压成摘要，近期保留原文。下面给出完整可运行实现：</p>
+
+    <pre><code data-lang="python">from langchain_core.messages import HumanMessage, AIMessage, trim_messages
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_openai import ChatOpenAI
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+# 摘要提示
+summary_prompt = ChatPromptTemplate.from_template(
+    "将以下对话浓缩为 50 字内的要点（保留人名、偏好、任务等关键事实）：\n{history}"
+)
+
+def build_summary(history_text: str) -> str:
+    return (summary_prompt | model).invoke({"history": history_text}).content
+
+# 组装：system 含摘要 + 近期原文
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "你是贴心助手。以下是此前对话的要点摘要：\n{summary}"),
+    MessagesPlaceholder("history"),
+    ("human", "{input}"),
+])
+chain = prompt | model
+
+# 会话状态：保存摘要 + 近期消息
+store = {}
+
+class SessionState:
+    def __init__(self):
+        self.summary = ""
+        self.recent = []   # 只保留最近 N 条
+
+def get_history(session_id: str):
+    if session_id not in store:
+        store[session_id] = SessionState()
+    return store[session_id]
+
+def chat(session_id: str, user_input: str) -> str:
+    state = get_history(session_id)
+    resp = chain.invoke({
+        "summary": state.summary,
+        "history": state.recent,
+        "input": user_input,
+    })
+    # 更新：追加新消息，若过长则压缩为摘要
+    state.recent.append(HumanMessage(user_input))
+    state.recent.append(AIMessage(resp.content))
+    if len(state.recent) > 4:   # 超过 2 轮就压缩
+        old_text = "\n".join(m.content for m in state.recent[:-2])
+        state.summary = build_summary(old_text)
+        state.recent = state.recent[-2:]
+    return resp.content</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：摘要时机</span>
+      不必每轮都重新摘要（浪费一次模型调用）。可以设定阈值——当历史超过 N 条或 token 超限时才触发摘要，把摘要计算摊薄到多轮中，兼顾效果与成本。
+    </div>
+
+    <h2 id="exercise">4.9 动手练习</h2>
+
+    <div class="exercise">
+      <div class="ex-title">练习 4.1：多会话隔离 <span class="ex-level">（入门）</span></div>
+      <p>用 <code>RunnableWithMessageHistory</code> 创建两个不同 <code>session_id</code>，分别告诉模型不同名字，验证两者历史互不干扰。</p>
+      <div class="verify"><strong>验证方法：</strong>session A 问「我叫什么」返回 A 的名字，session B 返回 B 的名字，互不串扰。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex4.1"><label>已完成练习 4.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 4.2：实现窗口裁剪 <span class="ex-level">（进阶）</span></div>
+      <p>在 4.1 的基础上，让历史只保留最近 2 轮，模拟长对话，观察早期信息被遗忘的现象。</p>
+      <div class="verify"><strong>验证方法：</strong>连续对话多轮后，追问第 1 轮的信息，模型回答「不知道」，验证窗口裁剪生效。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex4.2"><label>已完成练习 4.2</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 4.3：摘要记忆 <span class="ex-level">（进阶）</span></div>
+      <p>实现一个「摘要 + 近期原文」的组合记忆：早期对话压缩成摘要，最近 2 轮保留原文，观察模型既能记住早期关键信息又能应对细节追问。</p>
+      <div class="verify"><strong>验证方法：</strong>长对话后，模型仍能回答早期定下的「偏好/任务」，且 token 消耗明显低于全量缓冲。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex4.3"><label>已完成练习 4.3</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 4.4：用 trim_messages 按 token 裁剪 <span class="ex-level">（进阶）</span></div>
+      <p>用 <code>trim_messages</code>（而非手写切片）按 token 上限裁剪历史，设置 <code>max_tokens=300</code>，观察裁剪边界。</p>
+      <div class="verify"><strong>验证方法：</strong>打印裁剪前后的消息数，确认 system 消息始终保留、总 token 不超过阈值。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex4.4"><label>已完成练习 4.4</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="03-prompt.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">03 提示模板（Prompt Template）</span></a>
+      <a href="05-rag.html" class="next"><span class="dir">下一页 →</span><span class="lbl">05 检索增强生成（RAG）</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

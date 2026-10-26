@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="appendix">
+<title>10 附录与资源 · LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html" class="active">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>10 附录与资源</h1>
+      <div class="meta">
+        <span class="badge phase">阶段三 · 参考</span>
+        <span class="badge difficulty-入门">难度：参考</span>
+        <span class="badge preq">—</span>
+      </div>
+    </div>
+
+    <h2 id="glossary">10.1 术语表</h2>
+    <table>
+      <thead><tr><th>术语</th><th>英文</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>链</td><td>Chain</td><td>多个步骤的固定流水线</td></tr>
+        <tr><td>LCEL</td><td>LangChain Expression Language</td><td>用 <code>|</code> 组合 Runnable 的声明式语法</td></tr>
+        <tr><td>Runnable</td><td>Runnable</td><td>统一的可调用组件接口（invoke/stream/batch）</td></tr>
+        <tr><td>提示模板</td><td>Prompt Template</td><td>结构与数据分离的可复用提示</td></tr>
+        <tr><td>记忆</td><td>Memory</td><td>管理对话历史的策略</td></tr>
+        <tr><td>RAG</td><td>Retrieval-Augmented Generation</td><td>检索外部知识辅助生成</td></tr>
+        <tr><td>嵌入</td><td>Embedding</td><td>把文本转为向量</td></tr>
+        <tr><td>向量库</td><td>Vector Store</td><td>存储并检索向量的数据库</td></tr>
+        <tr><td>工具</td><td>Tool</td><td>模型可调用的外部函数</td></tr>
+        <tr><td>智能体</td><td>Agent</td><td>自主决策循环的模型应用</td></tr>
+        <tr><td>ReAct</td><td>Reasoning + Acting</td><td>思考-行动-观察的循环模式</td></tr>
+        <tr><td>流式</td><td>Streaming</td><td>逐 token 返回结果</td></tr>
+        <tr><td>回调</td><td>Callback</td><td>在运行各阶段触发的钩子</td></tr>
+        <tr><td>幻觉</td><td>Hallucination</td><td>模型生成看似合理但错误的内容</td></tr>
+        <tr><td>提示注入</td><td>Prompt Injection</td><td>通过恶意输入诱导模型越权的攻击</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="api-quick">10.2 常用 API 速查</h2>
+    <pre><code data-lang="python">from langchain_openai import ChatOpenAI           # 模型
+from langchain_core.prompts import ChatPromptTemplate   # 提示
+from langchain_core.output_parsers import StrOutputParser # 输出解析
+from langchain_core.runnables import (            # 编排
+    RunnableLambda, RunnableParallel, RunnablePassthrough)
+from langchain_core.messages import (              # 消息
+    HumanMessage, AIMessage, SystemMessage, ToolMessage)
+from langchain_core.tools import tool              # 工具
+from langchain.agents import create_agent          # 智能体
+from langchain_core.chat_history import InMemoryChatMessageHistory  # 记忆
+from langchain_core.runnables.history import RunnableWithMessageHistory</code></pre>
+
+    <h3>常用组合模式</h3>
+    <pre><code data-lang="python"># 1. 基础链
+chain = prompt | model | StrOutputParser()
+
+# 2. RAG 链
+chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt | model | StrOutputParser()
+)
+
+# 3. 并行
+chain = RunnableParallel(a=chain_a, b=chain_b)
+
+# 4. 带记忆
+chain = RunnableWithMessageHistory(
+    prompt | model,
+    get_history,
+    input_messages_key="input",
+    history_messages_key="history",
+)</code></pre>
+
+    <h2 id="errors">10.3 常见报错与解决</h2>
+    <table>
+      <thead><tr><th>报错</th><th>原因</th><th>解决</th></tr></thead>
+      <tbody>
+        <tr><td><code>KeyError: 'xxx'</code></td><td>链的输入键不匹配</td><td>检查上一步输出键与下一步输入键，用 RunnableLambda 适配</td></tr>
+        <tr><td><code>ModuleNotFoundError</code></td><td>集成包未安装</td><td>按需安装 langchain-openai / langchain-community 等</td></tr>
+        <tr><td><code>AuthenticationError</code></td><td>API Key 未配置或失效</td><td>检查 .env 与环境变量</td></tr>
+        <tr><td><code>InvalidRequestError</code></td><td>参数错误或超上下文</td><td>检查 max_tokens、裁剪历史</td></tr>
+        <tr><td><code>RateLimitError</code></td><td>请求过快</td><td>加限流、重试、退避</td></tr>
+        <tr><td>Agent 无限循环</td><td>无法收敛</td><td>设 max_iterations、优化工具描述与 system_prompt</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="versions">10.4 依赖版本汇总</h2>
+    <pre><code data-lang="python"># requirements.txt（本教程验证版本）
+langchain>=1.2,&lt;2.0
+langchain-core>=1.2,&lt;2.0
+langchain-openai>=1.0
+langchain-community>=1.0
+langchain-text-splitters>=1.0
+langchain-chroma>=1.0
+chromadb
+langgraph>=1.0
+python-dotenv
+pydantic>=2.0</code></pre>
+
+    <h2 id="resources">10.5 延伸资源</h2>
+    <ul>
+      <li><strong>LangChain 官方文档</strong>：<code>python.langchain.com</code> — API 权威参考。</li>
+      <li><strong>LangGraph 文档</strong>：<code>langchain-ai.github.io/langgraph</code> — 状态化工作流。</li>
+      <li><strong>LangChain 官方教程</strong>：官方 cookbook 与视频课。</li>
+      <li><strong>可观测性</strong>：LangSmith / Langfuse / Phoenix。</li>
+      <li><strong>向量库</strong>：Chroma（入门）、FAISS、Milvus、Pinecone、Weaviate。</li>
+    </ul>
+    <div class="callout tip">
+      <span class="ct-title">💡 版本演进提醒</span>
+      LangChain 更新频繁，API 可能变化。遇到问题时，优先查阅与你安装版本匹配的官方文档，而不是依赖记忆中的旧写法。
+    </div>
+
+    <h2 id="recipes">10.6 常用代码片段速查（Cookbook）</h2>
+    <p>以下是最常用的几段「拿来即用」的代码模板，覆盖 80% 的常见需求：</p>
+
+    <pre><code data-lang="python"># 1. 最简链
+chain = ChatPromptTemplate.from_template("{x}") | model | StrOutputParser()
+
+# 2. 结构化输出
+result = model.with_structured_output(MyPydanticModel).invoke("...")
+
+# 3. 带记忆的链
+chain = RunnableWithMessageHistory(chain, get_history,
+    input_messages_key="input", history_messages_key="history")
+
+# 4. RAG 问答
+rag = ({"context": retriever | fmt, "question": RunnablePassthrough()}
+       | prompt | model | StrOutputParser())
+
+# 5. 工具 + Agent
+agent = create_agent(model, tools=[...], system_prompt="...")
+
+# 6. 流式输出
+for chunk in chain.stream(input):
+    print(chunk.content, end="")
+
+# 7. 并行
+both = RunnableParallel(a=chain_a, b=chain_b)
+
+# 8. 回退
+robust = primary.with_fallbacks([backup])
+
+# 9. 缓存
+set_llm_cache(InMemoryCache())
+
+# 10. 异步
+result = await chain.ainvoke(input)</code></pre>
+
+    <h2 id="troubleshooting">10.7 调试技巧速查</h2>
+    <table>
+      <thead><tr><th>问题</th><th>排查方法</th></tr></thead>
+      <tbody>
+        <tr><td>链输入键报错</td><td>打印 <code>chain.input_schema</code> 查看期望的输入结构</td></tr>
+        <tr><td>不知道中间输出了什么</td><td>插入 <code>RunnableLambda(print)</code> 打印中间结果</td></tr>
+        <tr><td>模型调用了错误的工具</td><td>检查工具的 docstring 是否清晰、是否与其它工具混淆</td></tr>
+        <tr><td>Agent 死循环</td><td>打印 messages 历史，看它卡在哪个工具上</td></tr>
+        <tr><td>RAG 检索不到</td><td>检查切分参数、嵌入是否一致、文档是否清洗</td></tr>
+        <tr><td>响应太慢</td><td>用流式输出、并行、缓存、更小的模型</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="done">10.8 学习完成标记</h2>
+    <div class="check-item"><input type="checkbox" data-check-id="finish-all"><label>我已学完全部 10 个章节</label></div>
+    <p>恭喜！你已掌握从「链」到「企业级 Agent」的完整路径。下一步建议：完成第 08 章的实战项目，并阅读 LangGraph 文档深入状态化工作流。</p>
+
+    <div class="page-nav">
+      <a href="09-advanced.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">09 高级主题与生产化</span></a>
+      <a href="index.html" class="next"><span class="dir">回到首页 →</span><span class="lbl">00 首页与学习路径</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

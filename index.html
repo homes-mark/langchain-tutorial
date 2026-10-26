@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="index">
+<title>LangChain 1.2 完整学习教程 · 从入门到企业级实战</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- ===================== 侧边栏 ===================== -->
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html" class="active">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <!-- ===================== 主内容 ===================== -->
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>LangChain 1.2 完整学习教程</h1>
+      <p>一份由浅入深、可离线浏览、代码可运行的中文教程。覆盖从「链」到「企业级智能体」的完整演进路径，每个概念都配有真实代码、动手练习、常见误区与最佳实践。</p>
+      <div class="meta">
+        <span class="badge phase">总览</span>
+        <span class="badge difficulty-入门">难度：入门</span>
+        <span class="badge preq">依赖：langchain 1.2 / langchain-core 1.2</span>
+      </div>
+    </div>
+
+    <h2 id="about">关于本教程</h2>
+    <p>LangChain 是一个用于构建 <strong>大语言模型（LLM）应用</strong>的框架。它的核心价值在于：把「模型调用」这件单一的事，扩展为「编排模型、数据、工具与外部系统的完整工作流」。本教程以 <strong>LangChain 1.2</strong> 版本为准（核心库为 <code>langchain-core</code> 与 <code>langchain</code>），所有代码均可直接运行。</p>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 版本说明</span>
+      LangChain 在 0.3 之后进行了大规模重构，将底层抽象拆分为独立的 <code>langchain-core</code> 包（<code>BaseLanguageModel</code>、<code>Runnable</code>、消息模型等），<code>langchain</code> 作为集成层。1.x 进一步强化了 <code>create_agent</code>、LangGraph 集成与标准化工具调用。本教程中的导入路径均以 1.2 的实际 API 为准。
+    </div>
+
+    <h2 id="learning-path">学习路径总览</h2>
+    <p>教程分为三个阶段、10 个页面，每个页面都标注了<strong>学习目标</strong>、<strong>前置知识</strong>与<strong>难度等级</strong>。建议按顺序学习，但也可根据你的基础直接跳转到感兴趣的章节。</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>序号</th>
+          <th>章节</th>
+          <th>核心内容</th>
+          <th>难度</th>
+          <th>前置知识</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>01</td>
+          <td><a href="01-setup.html">环境搭建与快速上手</a></td>
+          <td>安装、API Key、第一个 LLM 调用</td>
+          <td><span class="badge difficulty-入门">入门</span></td>
+          <td>Python 基础</td>
+        </tr>
+        <tr>
+          <td>02</td>
+          <td><a href="02-chain.html">链（Chain）</a></td>
+          <td>Runnable 接口、LCEL、链式编排</td>
+          <td><span class="badge difficulty-入门">入门</span></td>
+          <td>01</td>
+        </tr>
+        <tr>
+          <td>03</td>
+          <td><a href="03-prompt.html">提示模板</a></td>
+          <td>PromptTemplate、ChatPromptTemplate、少样本、部分变量</td>
+          <td><span class="badge difficulty-入门">入门</span></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td>04</td>
+          <td><a href="04-memory.html">记忆（Memory）</a></td>
+          <td>对话历史、缓冲/摘要/窗口记忆、持久化</td>
+          <td><span class="badge difficulty-入门">入门</span></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td>05</td>
+          <td><a href="05-rag.html">检索增强生成（RAG）</a></td>
+          <td>文档加载、切分、向量化、检索、问答链</td>
+          <td><span class="badge difficulty-进阶">进阶</span></td>
+          <td>01–04</td>
+        </tr>
+        <tr>
+          <td>06</td>
+          <td><a href="06-tools.html">工具调用（Tool Calling）</a></td>
+          <td>@tool 装饰器、结构化参数、绑定工具</td>
+          <td><span class="badge difficulty-进阶">进阶</span></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td>07</td>
+          <td><a href="07-agent.html">智能体（Agent）</a></td>
+          <td>create_agent、ReAct、多轮工具循环</td>
+          <td><span class="badge difficulty-进阶">进阶</span></td>
+          <td>06</td>
+        </tr>
+        <tr>
+          <td>08</td>
+          <td><a href="08-project.html">企业级 Agent 实战</a></td>
+          <td>单工具→多工具→记忆+检索的企业级 Agent</td>
+          <td><span class="badge difficulty-高级">高级</span></td>
+          <td>04–07</td>
+        </tr>
+        <tr>
+          <td>09</td>
+          <td><a href="09-advanced.html">高级主题与生产化</a></td>
+          <td>流式、回调、LangGraph、性能与安全</td>
+          <td><span class="badge difficulty-高级">高级</span></td>
+          <td>07–08</td>
+        </tr>
+        <tr>
+          <td>10</td>
+          <td><a href="10-appendix.html">附录与资源</a></td>
+          <td>术语表、API 速查、常见报错、资源链接</td>
+          <td><span class="badge difficulty-入门">参考</span></td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="concept-evolution">核心概念与演进关系</h2>
+    <p>整个教程围绕一条清晰的演进主线展开。理解这些概念之间的「依赖关系」，是掌握 LangChain 的关键：</p>
+
+    <div class="concept-map">
+      <svg viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#1c7c54"/>
+          </marker>
+        </defs>
+        <style>
+          .node rect { fill:#e6f4ee; stroke:#1c7c54; stroke-width:1.5px; rx:8px; }
+          .node text { font-family:sans-serif; font-size:13px; fill:#24292f; }
+          .node .title { font-weight:700; fill:#1c7c54; }
+          .edge { stroke:#1c7c54; stroke-width:1.5px; fill:none; marker-end:url(#arrow); }
+          .label { font-size:11px; fill:#6b7280; }
+        </style>
+
+        <!-- 第一层：基础 -->
+        <g class="node"><rect x="20" y="20" width="170" height="58"/><text x="105" y="43" text-anchor="middle" class="title">提示模板</text><text x="105" y="63" text-anchor="middle">Prompt Template</text></g>
+        <g class="node"><rect x="20" y="130" width="170" height="58"/><text x="105" y="153" text-anchor="middle" class="title">大语言模型</text><text x="105" y="173" text-anchor="middle">LLM / ChatModel</text></g>
+
+        <!-- 第二层：链 -->
+        <g class="node"><rect x="280" y="75" width="170" height="58"/><text x="365" y="98" text-anchor="middle" class="title">链 Chain</text><text x="365" y="118" text-anchor="middle">LCEL · Runnable</text></g>
+
+        <!-- 第三层：能力扩展 -->
+        <g class="node"><rect x="530" y="20" width="170" height="58"/><text x="615" y="43" text-anchor="middle" class="title">记忆 Memory</text><text x="615" y="63" text-anchor="middle">对话上下文</text></g>
+        <g class="node"><rect x="530" y="120" width="170" height="58"/><text x="615" y="143" text-anchor="middle" class="title">检索 RAG</text><text x="615" y="163" text-anchor="middle">外部知识注入</text></g>
+        <g class="node"><rect x="530" y="220" width="170" height="58"/><text x="615" y="243" text-anchor="middle" class="title">工具 Tool</text><text x="615" y="263" text-anchor="middle">外部能力调用</text></g>
+
+        <!-- 第四层：智能体 -->
+        <g class="node"><rect x="720" y="110" width="160" height="80"/><text x="800" y="138" text-anchor="middle" class="title">智能体 Agent</text><text x="800" y="158" text-anchor="middle">自主决策循环</text><text x="800" y="176" text-anchor="middle" style="fill:#1c7c54">记忆 + 检索 + 工具</text></g>
+
+        <!-- 连线 -->
+        <path class="edge" d="M190,49 L280,49 L280,100"/>
+        <path class="edge" d="M190,159 L280,159 L280,110"/>
+        <path class="edge" d="M450,104 L530,104 L530,49"/>
+        <path class="edge" d="M450,104 L530,104 L530,149"/>
+        <path class="edge" d="M450,104 L530,104 L530,249"/>
+        <path class="edge" d="M700,49 L745,49 L745,110"/>
+        <path class="edge" d="M700,149 L745,149"/>
+        <path class="edge" d="M700,249 L745,249 L745,190"/>
+
+        <text class="label" x="230" y="40">填入</text>
+        <text class="label" x="230" y="130">编排</text>
+      </svg>
+    </div>
+
+    <ol>
+      <li><strong>提示模板</strong> + <strong>模型</strong> → 构成最基本的调用单元。</li>
+      <li><strong>链（Chain）</strong> 用 LCEL 把多个步骤串起来，实现多步流程。</li>
+      <li>在链的基础上叠加 <strong>记忆</strong>（上下文）、<strong>检索</strong>（外部知识）、<strong>工具</strong>（外部动作）三类能力。</li>
+      <li><strong>智能体（Agent）</strong> 让模型自主决定「何时调用哪个工具、调用几次、何时给出最终答案」——它是链、记忆、检索、工具的集大成者。</li>
+    </ol>
+
+    <h2 id="prerequisites">前置知识</h2>
+    <ul>
+      <li><strong>Python</strong>：掌握函数、类、类型注解（<code>def f(x: int) -&gt; str</code>）、异常处理、<code>pip</code> 与虚拟环境。</li>
+      <li><strong>LLM 基础概念</strong>：了解什么是 token、上下文窗口、temperature、system/user/assistant 消息角色。</li>
+      <li><strong>可选</strong>：基础的向量/嵌入（Embedding）直觉，RAG 章节会详细讲解。</li>
+    </ul>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 开始之前</span>
+      你需要一个可用的 LLM API Key（如 OpenAI、Anthropic，或国内可用的兼容端点）。本教程代码示例默认使用 <code>ChatOpenAI</code>，但你可以在 <a href="01-setup.html">第 01 章</a> 学习如何切换到任意兼容 OpenAI 接口的服务。
+    </div>
+
+    <h2 id="suggested-route">建议学习路线（两条）</h2>
+    <p>根据你的目标，可以选择不同的学习顺序：</p>
+    <table>
+      <thead><tr><th>目标</th><th>推荐路线</th><th>可跳过</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>快速上手，构建简单应用</strong></td>
+          <td>01 → 02 → 03 → 08（只做阶段一/二）</td>
+          <td>05（RAG）、09（高级）可后补</td>
+        </tr>
+        <tr>
+          <td><strong>深入掌握，构建生产级 Agent</strong></td>
+          <td>01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09</td>
+          <td>无，建议完整学习</td>
+        </tr>
+        <tr>
+          <td><strong>已有基础，专攻 RAG/Agent</strong></td>
+          <td>05（RAG）或 06–07（Agent）直接进入，遇到盲点回补 02–04</td>
+          <td>01 可略读</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="traps">学习常见陷阱（提前避坑）</h2>
+    <div class="callout danger">
+      <span class="ct-title">❌ 陷阱 1：死记 API，不理解原理</span>
+      LangChain 版本迭代快，API 会变。关键是理解 <strong>Runnable/LCEL 的「输入输出类型匹配」</strong>这一底层逻辑，而非背具体类名。掌握原理后，任何版本都能快速上手。
+    </div>
+    <div class="callout danger">
+      <span class="ct-title">❌ 陷阱 2：跳过「消息模型」直接学 Agent</span>
+      <code>HumanMessage/AIMessage/ToolMessage</code> 是所有高级特性（记忆、工具、Agent）的地基。地基不牢，后面会频繁被 <code>KeyError</code>、类型不匹配等问题卡住。
+    </div>
+    <div class="callout danger">
+      <span class="ct-title">❌ 陷阱 3：只读代码不运行</span>
+      本教程刻意设计成「可运行」。请务必在本地逐条运行、改参数、观察输出变化——这是唯一真正学会的方式。
+    </div>
+
+    <h2 id="how-to-use">如何使用本教程</h2>
+    <ul>
+      <li><strong>顺序学习</strong>：按 01→10 的顺序，每个页面末尾有「上一页 / 下一页」导航。</li>
+      <li><strong>动手优先</strong>：每个章节都有「动手练习」，请务必自己敲一遍代码，而不只是阅读。</li>
+      <li><strong>进度追踪</strong>：每个练习前有复选框，勾选状态会自动保存在浏览器本地（离线可用）。</li>
+      <li><strong>离线浏览</strong>：所有页面、样式、脚本均为本地文件，无任何网络依赖，可直接双击 <code>index.html</code> 打开。</li>
+    </ul>
+
+    <h2 id="checklist">学习清单</h2>
+    <div class="check-item"><input type="checkbox" id="c1" data-check-id="start"><label for="c1">我已准备好 Python 环境与 API Key</label></div>
+    <div class="check-item"><input type="checkbox" id="c2" data-check-id="path"><label for="c2">我理解「提示→模型→链→记忆/检索/工具→Agent」的演进主线</label></div>
+    <div class="check-item"><input type="checkbox" id="c3" data-check-id="go"><label for="c3">准备进入 <a href="01-setup.html">第 01 章 环境搭建</a></label></div>
+
+    <!-- 上一页 / 下一页 -->
+    <div class="page-nav">
+      <a href="01-setup.html"><span class="dir">下一页 →</span><span class="lbl">01 环境搭建与快速上手</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

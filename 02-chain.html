@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="chain">
+<title>02 链（Chain）· LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html" class="active">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>02 链（Chain）</h1>
+      <div class="meta">
+        <span class="badge phase">阶段一 · 入门</span>
+        <span class="badge difficulty-入门">难度：入门</span>
+        <span class="badge preq">前置：01 环境搭建</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>理解 Runnable 接口与 LCEL</li>
+          <li>用管道符 <code>|</code> 编排多步流程</li>
+          <li>掌握 invoke / stream / batch 三种调用方式</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>01 章节的模型调用</li>
+          <li>函数式编程直觉（管道、组合）</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="what-is-chain">2.1 什么是「链」</h2>
+    <p>在真实应用中，很少只调用一次模型。通常需要：<strong>格式化提示 → 调用模型 → 解析输出 → 后处理</strong>。「链（Chain）」就是把多个步骤组合成一条流水线。</p>
+
+    <p>LangChain 1.x 中，一切可调用组件都实现统一的 <code>Runnable</code> 接口。通过 <strong>LCEL（LangChain Expression Language）</strong>，你可以用管道符 <code>|</code> 把多个 Runnable 串联起来，像搭积木一样。</p>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 LCEL 是什么</span>
+      LCEL 是一套声明式语法，用于组合 Runnable。它自动提供：<strong>流式传输、批处理、异步调用、重试与回退、并行执行、运行时配置</strong>等能力。这是 LangChain 最核心、最值得掌握的设计。
+    </div>
+
+    <h2 id="runnable">2.2 Runnable 接口</h2>
+    <p>每个 Runnable 都有统一的调用方法：</p>
+    <table>
+      <thead><tr><th>方法</th><th>说明</th><th>适用场景</th></tr></thead>
+      <tbody>
+        <tr><td><code>invoke(input)</code></td><td>同步调用，返回完整结果</td><td>普通脚本</td></tr>
+        <tr><td><code>stream(input)</code></td><td>流式返回，逐 token 输出</td><td>聊天界面、长文本</td></tr>
+        <tr><td><code>batch(inputs)</code></td><td>批量处理，返回结果列表</td><td>批量任务</td></tr>
+        <tr><td><code>ainvoke / astream</code></td><td>异步版本</td><td>Web 服务、高并发</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="lcel-basic">2.3 LCEL 基础：管道编排</h2>
+    <p>下面用 <code>prompt | model</code> 组合出第一条链。提示模板（第 03 章详解）先格式化输入，再交给模型：</p>
+    <pre><code data-lang="python">from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+prompt = ChatPromptTemplate.from_template(
+    "把下面的内容翻译成{language}：\n{text}"
+)
+
+# 用 | 串联成链
+chain = prompt | model
+
+result = chain.invoke({
+    "language": "英文",
+    "text": "今天天气很好，适合出去散步。",
+})
+print(result.content)</code></pre>
+
+    <pre class="output"><code>The weather is nice today, perfect for going out for a walk.</code></pre>
+
+    <h3>链中的数据流</h3>
+    <p>LCEL 的 <code>|</code> 会把<strong>左侧的输出作为右侧的输入</strong>。因此每一步的输出类型必须与下一步的输入类型匹配。上面的例子：<code>prompt</code> 输出 <code>PromptValue</code>，恰好是 <code>model</code> 的输入。</p>
+
+    <h2 id="multi-step">2.4 多步链与输出解析</h2>
+    <p>引入 <code>StrOutputParser</code> 把 <code>AIMessage</code> 转成纯字符串，并串联多个步骤：</p>
+    <pre><code data-lang="python">from langchain_core.output_parsers import StrOutputParser
+
+outline_prompt = ChatPromptTemplate.from_template(
+    "为「{topic}」生成一份 3 点大纲，每点不超过 15 字。"
+)
+expand_prompt = ChatPromptTemplate.from_template(
+    "请把下面的提纲展开成一段连贯的文字：\n{outline}"
+)
+
+chain = (
+    outline_prompt
+    | model
+    | StrOutputParser()      # AIMessage -> str
+    | (lambda outline: {"outline": outline})  # 适配下一步输入
+    | expand_prompt
+    | model
+    | StrOutputParser()
+)
+
+print(chain.invoke({"topic": "量子计算"}))</code></pre>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 常见误区：输入字典键不匹配</span>
+      新手最常见的报错是 <code>KeyError</code>：链中某一步期望的输入键，与上一步实际输出的键不一致。上面的 <code>lambda outline: {"outline": outline}</code> 正是为了解决「上一步是字符串、下一步需要字典」的键对齐问题。
+    </div>
+
+    <h2 id="runnable-lambda">2.5 RunnableLambda 与自定义函数</h2>
+    <p>普通 Python 函数可以包装成 <code>RunnableLambda</code>，从而加入链中：</p>
+    <pre><code data-lang="python">from langchain_core.runnables import RunnableLambda
+
+def count_words(text: str) -> str:
+    return f"该段文字共 {len(text)} 个字符。"
+
+chain = (
+    prompt | model | StrOutputParser()
+    | RunnableLambda(count_words)
+)
+print(chain.invoke({"language": "英文", "text": "你好，世界"}))</code></pre>
+
+    <h2 id="parallel">2.6 并行执行：RunnableParallel</h2>
+    <p>当多个分支可以同时计算时，用 <code>RunnableParallel</code>（字典形式）并行执行，最后汇总：</p>
+    <pre><code data-lang="python">from langchain_core.runnables import RunnableParallel
+
+# 同一输入，同时生成「优点」和「缺点」
+pros_prompt = ChatPromptTemplate.from_template("列出「{topic}」的 3 个优点")
+cons_prompt = ChatPromptTemplate.from_template("列出「{topic}」的 3 个缺点")
+
+chain = RunnableParallel(
+    pros=pros_prompt | model | StrOutputParser(),
+    cons=cons_prompt | model | StrOutputParser(),
+)
+
+result = chain.invoke({"topic": "远程办公"})
+print("优点：\n", result["pros"])
+print("缺点：\n", result["cons"])</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：可维护性</span>
+      复杂的链会迅速变得难以阅读。建议：<strong>给每个子链命名</strong>（用变量名如 <code>translate_chain</code>），<strong>拆分为小函数</strong>，并在关键节点加注释说明数据流。超过 3 步的链，考虑用第 09 章的 LangGraph 做显式状态管理。
+    </div>
+
+    <h2 id="dataflow">2.7 LCEL 数据流与类型匹配</h2>
+    <p>理解 LCEL 最关键的，是搞懂每一步的<strong>输出类型</strong>如何作为下一步的<strong>输入</strong>。下图展示了一条典型链的数据流转：</p>
+
+    <div class="concept-map">
+      <svg viewBox="0 0 900 170" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <defs><marker id="dfArrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#3b82f6"/></marker></defs>
+        <style>.bb{fill:#eef6ff;stroke:#3b82f6;stroke-width:1.5px;rx:8px} .tt{font-family:sans-serif;font-size:12px;fill:#24292f;text-anchor:middle;font-weight:700} .sub{font-family:sans-serif;font-size:10px;fill:#6b7280;text-anchor:middle} .ee{stroke:#3b82f6;stroke-width:1.5px;fill:none;marker-end:url(#dfArrow)}</style>
+        <rect class="bb" x="10" y="55" width="160" height="70"/><text class="tt" x="90" y="82">输入 dict</text><text class="sub" x="90" y="100">{text, language}</text>
+        <rect class="bb" x="210" y="55" width="160" height="70"/><text class="tt" x="290" y="82">PromptTemplate</text><text class="sub" x="290" y="100">输出 PromptValue</text>
+        <rect class="bb" x="410" y="55" width="160" height="70"/><text class="tt" x="490" y="82">ChatModel</text><text class="sub" x="490" y="100">输出 AIMessage</text>
+        <rect class="bb" x="610" y="55" width="160" height="70"/><text class="tt" x="690" y="82">StrOutputParser</text><text class="sub" x="690" y="100">输出 str</text>
+        <path class="ee" d="M170,90 L210,90"/>
+        <path class="ee" d="M370,90 L410,90"/>
+        <path class="ee" d="M570,90 L610,90"/>
+        <text class="sub" x="90" y="22" style="fill:#3b82f6;font-weight:700">每一步的「输出类型」= 下一步的「输入类型」</text>
+      </svg>
+    </div>
+
+    <p>如果类型不匹配（如某一步输出 <code>str</code>，下一步却需要 <code>dict</code>），就需要插入一个「适配器」——通常是一个 <code>RunnableLambda</code>，把数据改造成下一步要的格式。</p>
+
+    <h2 id="async">2.8 异步与批处理</h2>
+    <p>生产环境中，同步调用会阻塞事件循环。用异步版方法（<code>ainvoke</code>/<code>astream</code>/<code>abatch</code>）可以并发处理多个请求：</p>
+
+    <pre><code data-lang="python">import asyncio
+
+async def main():
+    # 并发调用 3 个不同翻译
+    tasks = [
+        chain.ainvoke({"language": "英文", "text": "你好"}),
+        chain.ainvoke({"language": "日语", "text": "谢谢"}),
+        chain.ainvoke({"language": "法语", "text": "再见"}),
+    ]
+    results = await asyncio.gather(*tasks)  # 并发执行
+    for r in results:
+        print(r)
+
+asyncio.run(main())</code></pre>
+
+    <h2 id="error-handling">2.9 错误处理与回退</h2>
+    <p>链可以配置<strong>重试</strong>和<strong>回退（fallback）</strong>，提升健壮性：</p>
+
+    <pre><code data-lang="python">from langchain_openai import ChatOpenAI
+
+# 主模型 + 备用模型
+primary = ChatOpenAI(model="gpt-4o", timeout=5)
+fallback = ChatOpenAI(model="gpt-4o-mini", timeout=10)
+
+# 主模型失败时自动回退到备用模型
+robust_chain = (primary.with_fallbacks([fallback])) | StrOutputParser()
+
+# 带重试：失败自动重试 3 次
+from langchain_core.runnables import RunnableRetry
+retried = RunnableRetry(bound=chain, max_attempt_number=3)</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：健壮性</span>
+      网络抖动、限流、超时在真实环境很常见。为链配置 <code>with_fallbacks</code>（备用模型）与重试，是生产系统的必备项，能显著降低故障率。
+    </div>
+
+    <h2 id="exercise">2.10 动手练习</h2>
+
+    <div class="exercise">
+      <div class="ex-title">练习 2.1：构建翻译链 <span class="ex-level">（入门）</span></div>
+      <p>用 LCEL 构建一条链：输入一段中文和「目标语言」，输出对应语言的翻译，并将结果转为纯字符串。</p>
+      <div class="verify"><strong>验证方法：</strong>传入「目标语言=法语」，观察输出为法语文本，且 <code>type()</code> 为 <code>str</code>。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex2.1"><label>已完成练习 2.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 2.2：并行生成方案对比 <span class="ex-level">（入门）</span></div>
+      <p>用 <code>RunnableParallel</code> 同时生成「方案 A」和「方案 B」两套营销文案，分别用不同的 temperature，比较差异。</p>
+      <div class="verify"><strong>验证方法：</strong>一次 <code>invoke</code> 返回包含两个键的字典，且两个方案内容明显不同。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex2.2"><label>已完成练习 2.2</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 2.3：调试数据流 <span class="ex-level">（进阶）</span></div>
+      <p>给 2.4 的多步链在中间插入一个 <code>RunnableLambda</code>，打印每一步的中间输出，观察数据如何流转。</p>
+      <div class="verify"><strong>验证方法：</strong>控制台能看到「提纲」与「正文」两个阶段的中间结果，理解输入输出类型变化。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex2.3"><label>已完成练习 2.3</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 2.4：异步并发调用 <span class="ex-level">（进阶）</span></div>
+      <p>用 <code>ainvoke</code> + <code>asyncio.gather</code> 并发翻译 3 段文本，对比与顺序调用的耗时差异。</p>
+      <div class="verify"><strong>验证方法：</strong>并发调用总耗时显著小于顺序调用之和（约等于最慢的那一个），理解异步的价值。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex2.4"><label>已完成练习 2.4</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 2.5：配置回退 <span class="ex-level">（高级）</span></div>
+      <p>为主模型配置一个 <code>with_fallbacks</code> 备用模型，故意让主模型超时（如设置极小的 timeout），观察是否自动回退。</p>
+      <div class="verify"><strong>验证方法：</strong>主模型超时后，链自动用备用模型返回结果，全程不抛异常。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex2.5"><label>已完成练习 2.5</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="01-setup.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">01 环境搭建与快速上手</span></a>
+      <a href="03-prompt.html" class="next"><span class="dir">下一页 →</span><span class="lbl">03 提示模板（Prompt Template）</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

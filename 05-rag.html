@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="rag">
+<title>05 检索增强生成（RAG）· LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html" class="active">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>05 检索增强生成（RAG）</h1>
+      <div class="meta">
+        <span class="badge phase">阶段二 · 进阶</span>
+        <span class="badge difficulty-进阶">难度：进阶</span>
+        <span class="badge preq">前置：01–04</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>理解 RAG 的动机与整体流程</li>
+          <li>掌握文档加载、切分、向量化、检索</li>
+          <li>构建端到端的问答链</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>LCEL 链式编排</li>
+          <li>向量/嵌入的基本直觉</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="why-rag">5.1 为什么需要 RAG</h2>
+    <p>大模型的三大局限：</p>
+    <ul>
+      <li><strong>知识截止</strong>：训练数据有时间上限，不知道新信息。</li>
+      <li><strong>私有知识缺失</strong>：不知道你公司的内部文档。</li>
+      <li><strong>幻觉（Hallucination）</strong>：会一本正经地编造不存在的事实。</li>
+    </ul>
+    <p><strong>RAG（Retrieval-Augmented Generation，检索增强生成）</strong>的思路：先从你的知识库<strong>检索</strong>出相关内容，再把内容「塞进」提示词，让模型<strong>基于这些材料回答</strong>，而不是凭空生成。</p>
+
+    <div class="concept-map">
+      <svg viewBox="0 0 860 150" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <defs><marker id="ragArrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1c7c54"/></marker></defs>
+        <style>.b{fill:#e6f4ee;stroke:#1c7c54;stroke-width:1.5px;rx:8px} .t{font-family:sans-serif;font-size:12px;fill:#24292f;text-anchor:middle} .tt{font-weight:700;fill:#1c7c54} .e{stroke:#1c7c54;stroke-width:1.5px;fill:none;marker-end:url(#ragArrow)}</style>
+        <rect class="b" x="10" y="45" width="130" height="60"/><text class="t tt" x="75" y="70">文档</text><text class="t" x="75" y="90">加载/切分</text>
+        <rect class="b" x="180" y="45" width="130" height="60"/><text class="t tt" x="245" y="70">向量化</text><text class="t" x="245" y="90">Embedding</text>
+        <rect class="b" x="350" y="45" width="130" height="60"/><text class="t tt" x="415" y="70">向量库</text><text class="t" x="415" y="90">Vector Store</text>
+        <rect class="b" x="520" y="45" width="150" height="60"/><text class="t tt" x="595" y="70">检索 Top-K</text><text class="t" x="595" y="90">相似度搜索</text>
+        <rect class="b" x="710" y="45" width="140" height="60"/><text class="t tt" x="780" y="70">生成回答</text><text class="t" x="780" y="90">基于材料</text>
+        <path class="e" d="M140,75 L180,75"/><path class="e" d="M310,75 L350,75"/><path class="e" d="M480,75 L520,75"/><path class="e" d="M670,75 L710,75"/>
+        <text class="t" x="75" y="22" fill="#6b7280">离线索引阶段</text>
+        <text class="t" x="600" y="22" fill="#6b7280">在线查询阶段</text>
+      </svg>
+    </div>
+
+    <h2 id="pipeline">5.2 RAG 全流程</h2>
+    <p>RAG 分两个阶段：<strong>索引（离线）</strong>和<strong>查询（在线）</strong>。先安装依赖：</p>
+    <pre><code data-lang="python">pip install "langchain-text-splitters>=1.0" "langchain-community>=1.0"
+pip install "langchain-chroma>=1.0" "chromadb"   # 向量库
+# 嵌入模型（以 OpenAI 为例，或改用本地模型省成本）
+pip install "langchain-openai>=1.0"</code></pre>
+
+    <h3>步骤 1：加载文档</h3>
+    <pre><code data-lang="python">from langchain_community.document_loaders import TextLoader
+
+loader = TextLoader("./data/公司制度.txt", encoding="utf-8")
+docs = loader.load()
+print(len(docs), "个文档加载完成")</code></pre>
+
+    <h3>步骤 2：切分（Chunking）</h3>
+    <p>文档太长，需要切成小片段，既能塞进上下文，也便于精确检索：</p>
+    <pre><code data-lang="python">from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,        # 每块约 500 字符
+    chunk_overlap=50,      # 块间重叠 50 字符，避免语义被切断
+)
+chunks = splitter.split_documents(docs)
+print(f"切分为 {len(chunks)} 个片段")</code></pre>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 常见误区：切分参数</span>
+      <code>chunk_size</code> 太小会导致语义碎片化、检索不到完整上下文；太大则超出模型处理能力、且无关内容噪声多。通常 300–1000 字符较合适，<code>chunk_overlap</code> 设为 chunk_size 的 10%–20%。关键要按<strong>语义边界</strong>（如段落、标题）切分。
+    </div>
+
+    <h3>步骤 3：向量化并入库</h3>
+    <pre><code data-lang="python">from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+
+vectorstore = Chroma.from_documents(
+    documents=chunks,
+    embedding=embeddings,
+    persist_directory="./chroma_db",   # 持久化，下次直接加载
+)</code></pre>
+
+    <h3>步骤 4：构建检索器</h3>
+    <pre><code data-lang="python">retriever = vectorstore.as_retriever(
+    search_type="similarity",   # 相似度检索
+    search_kwargs={"k": 4},     # 返回最相似的 4 块
+)
+relevant = retriever.invoke("年假可以休几天？")
+print(relevant[0].page_content)</code></pre>
+
+    <h3>步骤 5：组成问答链</h3>
+    <pre><code data-lang="python">from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+prompt = ChatPromptTemplate.from_template(
+    """请仅根据下面提供的资料回答问题。如果资料中没有答案，请明确说"资料中未提及"。
+
+资料：
+{context}
+
+问题：{question}
+回答："""
+)
+
+def format_docs(docs):
+    return "\n\n".join(d.page_content for d in docs)
+
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | model
+    | StrOutputParser()
+)
+
+print(rag_chain.invoke("年假可以休几天？"))</code></pre>
+
+    <pre class="output"><code>根据公司制度，员工入职满 1 年可享受 5 天年假，
+满 3 年可享受 10 天年假。</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 这行代码在做什么</span>
+      <code>{"context": retriever | format_docs, "question": RunnablePassthrough()}</code> 同时构造了字典的两个键：<code>context</code> 走「检索→拼接」，<code>question</code> 原样透传（<code>RunnablePassthrough</code>）。这是 RAG 链最经典的写法，务必理解。
+    </div>
+
+    <h2 id="improve">5.3 提升检索质量</h2>
+    <table>
+      <thead><tr><th>技术</th><th>解决的问题</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>MMR</code></td><td>结果重复</td><td>最大边际相关，兼顾相关性与多样性</td></tr>
+        <tr><td>混合检索</td><td>关键词匹配不足</td><td>向量检索 + 关键词（BM25）结合</td></tr>
+        <tr><td>重排序（Rerank）</td><td>Top-K 不够准</td><td>用更精的模型对候选二次排序</td></tr>
+        <tr><td>元数据过滤</td><td>范围限定</td><td>按时间/分类/权限过滤</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code data-lang="python"># MMR 检索示例
+retriever = vectorstore.as_retriever(
+    search_type="mmr",
+    search_kwargs={"k": 4, "fetch_k": 20, "lambda_mult": 0.5},
+)</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：性能与成本</span>
+      <ul>
+        <li><strong>嵌入缓存</strong>：向量化是 RAG 最耗时的环节之一，对已处理文档做缓存，避免重复计算。</li>
+        <li><strong>异步 + 批量</strong>：大量文档用 <code>abatch</code> 或分批嵌入。</li>
+        <li><strong>本地嵌入模型</strong>：生产环境用 <code>sentence-transformers</code> 等本地模型，避免按 token 付费。</li>
+        <li><strong>评估</strong>：用真实问题集评估「命中率」与「答案准确率」，而非凭感觉调参。</li>
+      </ul>
+    </div>
+
+    <div class="callout danger">
+      <span class="ct-title">❌ 误区：幻觉仍未根除</span>
+      RAG 能显著降低幻觉，但不能完全消除。若检索结果质量差，模型仍可能编造。务必在提示中强制「资料未提及则明说」，并在关键场景加人工审核。
+    </div>
+
+    <h2 id="doc-types">5.5 加载多种文档类型</h2>
+    <p>真实项目要处理 PDF、Word、网页等各类文档。LangChain 提供大量 loader：</p>
+
+    <pre><code data-lang="python">from langchain_community.document_loaders import (
+    PyPDFLoader,          # PDF
+    Docx2txtLoader,       # Word
+    CSVLoader,            # CSV
+    WebBaseLoader,        # 网页
+    TextLoader,           # 纯文本
+)
+
+# 统一加载多个来源
+loaders = [
+    TextLoader("./data/制度.txt", encoding="utf-8"),
+    CSVLoader("./data/产品目录.csv"),
+    WebBaseLoader("https://example.com/faq"),
+]
+docs = []
+for loader in loaders:
+    docs.extend(loader.load())
+
+print(f"共加载 {len(docs)} 个文档")</code></pre>
+
+    <div class="callout warn">
+      <span class="ct-title">⚠️ 常见误区：忽略清洗</span>
+      直接从 PDF/网页提取的文本常含<strong>乱码、页眉页脚、导航栏、多余空白</strong>。这些噪声会污染向量库、降低检索质量。入库前务必做<strong>文本清洗</strong>（去噪、去重、统一格式）。
+    </div>
+
+    <h2 id="conversational-rag">5.6 对话式 RAG（带记忆的问答）</h2>
+    <p>把 RAG 与第 04 章的记忆结合，让问答能理解「它」「上一个问题」等指代：</p>
+
+    <pre><code data-lang="python">from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import InMemoryChatMessageHistory
+
+# 带历史的 RAG 提示
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "根据资料回答问题，资料不足则说明。\n\n资料：{context}"),
+    MessagesPlaceholder("history"),
+    ("human", "{question}"),
+])
+
+def format_docs(docs):
+    return "\n\n".join(d.page_content for d in docs)
+
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt | model | StrOutputParser()
+)
+
+# 包一层记忆
+store = {}
+def get_history(sid):
+    if sid not in store:
+        store[sid] = InMemoryChatMessageHistory()
+    return store[sid]
+
+with_history = RunnableWithMessageHistory(
+    rag_chain, get_history,
+    input_messages_key="question",
+    history_messages_key="history",
+)
+
+# 多轮问答
+print(with_history.invoke("年假有几天？", config={"configurable": {"session_id": "s1"}}))
+print(with_history.invoke("那病假呢？", config={"configurable": {"session_id": "s1"}}))  # "那"指代上文</code></pre>
+
+    <h2 id="eval">5.7 RAG 评估：别凭感觉</h2>
+    <p>RAG 有两类指标必须量化评估：</p>
+    <table>
+      <thead><tr><th>指标</th><th>含义</th><th>衡量</th></tr></thead>
+      <tbody>
+        <tr><td><strong>检索命中率</strong></td><td>检索结果里是否包含正确答案所在的片段</td><td>检索器质量</td></tr>
+        <tr><td><strong>答案准确率</strong></td><td>最终答案是否忠实于资料、是否正确</td><td>端到端质量</td></tr>
+        <tr><td><strong>忠实度（Faithfulness）</strong></td><td>答案是否完全基于检索内容（无幻觉）</td><td>幻觉程度</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code data-lang="python"># 评估思路：准备标注好的「问题-标准答案」对，批量跑分
+test_set = [
+    {"q": "年假有几天？", "expected": "入职满1年5天"},
+    {"q": "试用期多久？", "expected": "3个月"},
+    # ...
+]
+# 对每个问题：1) 检索，判断命中；2) 生成，比对答案
+# 可结合 LangSmith / RAGAS 等工具自动化评估</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：迭代优化 RAG</span>
+      优化 RAG 的正确姿势是「评估驱动」：先建立测试集与基线分数 → 改一个参数（如切分大小、检索策略）→ 重新评估对比 → 有提升才保留。切忌盲目堆技巧。
+    </div>
+
+    <h2 id="exercise">5.8 动手练习</h2>
+
+    <div class="exercise">
+      <div class="ex-title">练习 5.1：端到端 RAG <span class="ex-level">（进阶）</span></div>
+      <p>准备一份 2–3 页的任意文本（如产品说明、公司制度），完整跑通「加载→切分→向量化→检索→问答」流程。</p>
+      <div class="verify"><strong>验证方法：</strong>问一个文档中明确存在的细节问题，模型能准确引用原文回答；问一个文档外的问题，模型回答「资料中未提及」。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex5.1"><label>已完成练习 5.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 5.2：对比切分参数 <span class="ex-level">（进阶）</span></div>
+      <p>分别用 <code>chunk_size=200</code> 和 <code>chunk_size=800</code> 构建两个向量库，对同一问题检索，对比返回片段的质量。</p>
+      <div class="verify"><strong>验证方法：</strong>观察 chunk_size 过小时返回片段语义不完整，过大时噪声多，找到适合你数据的参数。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex5.2"><label>已完成练习 5.2</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 5.3：MMR 检索 <span class="ex-level">（高级）</span></div>
+      <p>把检索器改为 <code>mmr</code> 类型，调整 <code>lambda_mult</code>，观察返回结果在「相关性」与「多样性」间的变化。</p>
+      <div class="verify"><strong>验证方法：</strong>lambda_mult 越大越看重相关性（结果可能重复），越小越看重多样性（结果更分散）。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex5.3"><label>已完成练习 5.3</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 5.4：对话式 RAG <span class="ex-level">（高级）</span></div>
+      <p>给 RAG 链接入记忆，实现多轮问答，让模型能理解「它」「上一个」等指代。</p>
+      <div class="verify"><strong>验证方法：</strong>连续问「年假有几天？」「那病假呢？」，第二个问题能结合上下文正确检索并回答病假政策。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex5.4"><label>已完成练习 5.4</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="04-memory.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">04 记忆（Memory）</span></a>
+      <a href="06-tools.html" class="next"><span class="dir">下一页 →</span><span class="lbl">06 工具调用（Tool Calling）</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

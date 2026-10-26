@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="tools">
+<title>06 工具调用（Tool Calling）· LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html" class="active">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>06 工具调用（Tool Calling）</h1>
+      <div class="meta">
+        <span class="badge phase">阶段二 · 进阶</span>
+        <span class="badge difficulty-进阶">难度：进阶</span>
+        <span class="badge preq">前置：02 链</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>理解工具调用的机制与作用</li>
+          <li>用 @tool 定义结构化工具</li>
+          <li>掌握模型如何返回工具调用请求</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>Python 类型注解与 Pydantic</li>
+          <li>LCEL 链</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="why-tools">6.1 为什么需要工具</h2>
+    <p>模型只会「生成文本」，它本身<strong>不能查实时数据、不能执行代码、不能访问数据库</strong>。工具调用（Tool Calling / Function Calling）让模型能够：<strong>决定要调用哪个函数 → 生成结构化参数 → 由我们的代码真正执行 → 把结果返回给模型</strong>。</p>
+    <p>这是构建 <strong>Agent</strong> 的核心能力——模型从「只会说」升级为「会说也会做」。</p>
+
+    <h2 id="define-tool">6.2 用 @tool 定义工具</h2>
+    <p><code>@tool</code> 装饰器把普通 Python 函数变成工具。关键在于<strong>类型注解和 docstring</strong>——它们会被自动转成工具的描述（schema），供模型理解「何时、如何调用」：</p>
+
+    <pre><code data-lang="python">from langchain_core.tools import tool
+
+@tool
+def get_weather(city: str) -> str:
+    """查询指定城市的当前天气。city 参数应为中文城市名，如"北京"。"""
+    # 这里模拟返回，实际应调用天气 API
+    weather_db = {"北京": "晴，25°C", "上海": "多云，28°C"}
+    return weather_db.get(city, f"未找到{city}的天气数据")
+
+@tool
+def multiply(a: float, b: float) -> str:
+    """计算两个数的乘积。a 和 b 为需要相乘的数值。"""
+    return f"{a} × {b} = {a * b}"
+
+# 查看工具的描述（模型就是靠这个理解工具）
+print(get_weather.name)
+print(get_weather.description)
+print(get_weather.args)   # Pydantic 模型，定义了参数结构</code></pre>
+
+    <pre class="output"><code>get_weather
+查询指定城市的当前天气。city 参数应为中文城市名，如"北京"。
+{'city': {'title': 'City', 'type': 'string'}}</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 docstring 决定成败</span>
+      工具的 <code>docstring</code> 是模型判断「何时调用、参数填什么」的<strong>唯一依据</strong>。写清楚：工具用途、每个参数的含义、合法取值、返回内容。描述模糊 = 模型调用错误率高。
+    </div>
+
+    <h2 id="bind-tools">6.3 绑定工具到模型</h2>
+    <p>用 <code>bind_tools</code> 把工具告诉模型。模型会返回 <code>tool_calls</code> 而不是普通文本：</p>
+
+    <pre><code data-lang="python">from langchain_openai import ChatOpenAI
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+model_with_tools = model.bind_tools([get_weather, multiply])
+
+resp = model_with_tools.invoke("北京今天天气怎么样？")
+print(resp.tool_calls)</code></pre>
+
+    <pre class="output"><code>[{'name': 'get_weather',
+  'args': {'city': '北京'},
+  'id': 'call_abc123',
+  'type': 'tool_call'}]</code></pre>
+
+    <p>模型<strong>没有真正执行</strong>，只是生成了「我想调用 get_weather(city='北京')」的请求。需要我们自己执行并把结果返回：</p>
+
+    <pre><code data-lang="python">from langchain_core.messages import HumanMessage, ToolMessage
+
+# 1. 模型决定调用工具
+resp = model_with_tools.invoke([HumanMessage("北京今天天气怎么样？")])
+
+# 2. 手动执行工具
+for tc in resp.tool_calls:
+    result = get_weather.invoke(tc["args"])   # 真正执行
+    # 3. 把结果包装成 ToolMessage 返回给模型
+    tool_msg = ToolMessage(content=result, tool_call_id=tc["id"])
+    resp = model_with_tools.invoke([HumanMessage("北京今天天气怎么样？"), resp, tool_msg])
+
+print(resp.content)</code></pre>
+
+    <pre class="output"><code>北京今天天气晴，气温 25°C。</code></pre>
+
+    <h2 id="structured">6.4 结构化参数（Pydantic）</h2>
+    <p>复杂参数用 Pydantic 模型定义，让模型输出严格遵循结构：</p>
+
+    <pre><code data-lang="python">from pydantic import BaseModel, Field
+
+class SearchArgs(BaseModel):
+    """搜索参数"""
+    query: str = Field(description="搜索关键词")
+    limit: int = Field(default=5, description="返回结果数量", ge=1, le=20)
+
+@tool(args_schema=SearchArgs)
+def search_docs(query: str, limit: int = 5) -> str:
+    """在内部知识库中搜索文档。query 为关键词，limit 为返回条数。"""
+    return f"搜索「{query}」的前 {limit} 条结果..."</code></pre>
+
+    <h2 id="pitfalls">6.5 误区与最佳实践</h2>
+
+    <div class="callout danger">
+      <span class="ct-title">❌ 误区：工具无副作用假设</span>
+      工具可能执行<strong>不可逆操作</strong>（删除数据、发送邮件、扣款）。不要让模型直接调用危险工具而不加任何保护。应：区分「读」与「写」工具，写操作加<strong>人工确认（Human-in-the-loop）</strong>、权限校验、幂等设计。
+    </div>
+
+    <div class="callout danger">
+      <span class="ct-title">❌ 误区：信任模型的参数</span>
+      模型生成的参数可能含错误或恶意内容（如 SQL 注入）。工具内部必须<strong>校验参数</strong>（类型、范围、白名单），绝不能把模型参数直接拼进 SQL/命令。
+    </div>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践</span>
+      <ul>
+        <li>工具保持<strong>单一职责</strong>，一个工具只做一件事。</li>
+        <li>用 Pydantic 定义严格 schema，而非自由字符串。</li>
+        <li>工具要有<strong>超时、重试、错误处理</strong>，返回清晰错误信息给模型。</li>
+        <li>为工具写单元测试，隔离外部依赖（mock 掉 API 调用）。</li>
+      </ul>
+    </div>
+
+    <h2 id="flow">6.7 工具调用完整流程可视化</h2>
+    <p>把 6.3 的「手动循环」抽象出来，就是所有 Agent 的底层机制。下图展示了完整的往返：</p>
+
+    <div class="concept-map">
+      <svg viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <defs><marker id="tcArrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#3b82f6"/></marker></defs>
+        <style>.bb{fill:#eef6ff;stroke:#3b82f6;stroke-width:1.5px;rx:10px} .tt{font-family:sans-serif;font-size:12px;fill:#24292f;text-anchor:middle;font-weight:700} .sub{font-family:sans-serif;font-size:10px;fill:#6b7280;text-anchor:middle} .ee{stroke:#3b82f6;stroke-width:1.5px;fill:none;marker-end:url(#tcArrow)}</style>
+
+        <rect class="bb" x="20" y="20" width="160" height="60"/><text class="tt" x="100" y="45">用户提问</text><text class="sub" x="100" y="62">HumanMessage</text>
+
+        <rect class="bb" x="240" y="20" width="160" height="60"/><text class="tt" x="320" y="45">模型决策</text><text class="sub" x="320" y="62">返回 tool_calls</text>
+
+        <rect class="bb" x="460" y="20" width="160" height="60"/><text class="tt" x="540" y="45">执行工具</text><text class="sub" x="540" y="62">真实函数调用</text>
+
+        <rect class="bb" x="460" y="120" width="160" height="60"/><text class="tt" x="540" y="145">返回结果</text><text class="sub" x="540" y="162">ToolMessage</text>
+
+        <rect class="bb" x="240" y="120" width="160" height="60"/><text class="tt" x="320" y="145">模型总结</text><text class="sub" x="320" y="162">生成自然语言</text>
+
+        <rect class="bb" x="20" y="120" width="160" height="60"/><text class="tt" x="100" y="145">最终回答</text><text class="sub" x="100" y="162">AIMessage.content</text>
+
+        <path class="ee" d="M180,50 L240,50"/>
+        <path class="ee" d="M400,50 L460,50"/>
+        <path class="ee" d="M540,80 L540,120"/>
+        <path class="ee" d="M460,150 L400,150"/>
+        <path class="ee" d="M240,150 L180,150"/>
+        <path class="ee" d="M320,120 L320,80" stroke-dasharray="5,4"/>
+        <text class="sub" x="340" y="105" style="fill:#3b82f6">如需再次调用工具则循环</text>
+      </svg>
+    </div>
+
+    <h2 id="auto-loop">6.8 封装自动工具循环</h2>
+    <p>手动循环繁琐且易错。可以封装一个通用函数，自动处理「调用→执行→回传」直到模型给出最终答案：</p>
+
+    <pre><code data-lang="python">from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
+
+def run_tool_loop(model, tools, user_input: str, max_steps: int = 5) -> str:
+    """自动执行工具循环，直到模型返回最终答案"""
+    messages = [HumanMessage(user_input)]
+    tool_map = {t.name: t for t in tools}
+
+    for _ in range(max_steps):
+        resp = model.invoke(messages)
+
+        # 没有工具调用 → 已是最终答案
+        if not resp.tool_calls:
+            return resp.content
+
+        # 有工具调用 → 逐个执行并回传
+        messages.append(resp)
+        for tc in resp.tool_calls:
+            tool = tool_map[tc["name"]]
+            result = tool.invoke(tc["args"])
+            messages.append(ToolMessage(content=result, tool_call_id=tc["id"]))
+
+    # 达到最大步数仍未收敛
+    return "（已达到最大工具调用次数，未能完成任务）"
+
+answer = run_tool_loop(model_with_tools, [get_weather, multiply], "北京天气如何？")
+print(answer)</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 这就是 Agent 的雏形</span>
+      这个 <code>run_tool_loop</code> 函数本质上就是第 07 章 <code>create_agent</code> 内部做的事——循环调用模型、执行工具、回传结果，直到收敛。理解它，你就理解了 Agent 的全部底层逻辑。
+    </div>
+
+    <h2 id="exercise">6.9 动手练习</h2>
+
+    <div class="exercise">
+      <div class="ex-title">练习 6.1：定义并调用工具 <span class="ex-level">（进阶）</span></div>
+      <p>定义两个工具：<code>get_time(city)</code> 返回城市当前时间、<code>add(a, b)</code> 计算加法。绑定到模型，让模型正确选择工具。</p>
+      <div class="verify"><strong>验证方法：</strong>问「纽约现在几点」触发 get_time；问「3+5 等于几」触发 add；tool_calls 中的 name 和 args 正确。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex6.1"><label>已完成练习 6.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 6.2：完整工具循环 <span class="ex-level">（进阶）</span></div>
+      <p>手动实现「模型调用 → 执行工具 → 返回结果 → 模型总结」的完整循环（如 6.3 所示）。</p>
+      <div class="verify"><strong>验证方法：</strong>最终模型输出的自然语言中，正确包含了工具返回的真实数据。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex6.2"><label>已完成练习 6.2</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 6.3：Pydantic 约束参数 <span class="ex-level">（高级）</span></div>
+      <p>用 <code>args_schema</code> 为工具定义带 <code>ge/le</code> 约束和默认值的 Pydantic 参数，验证非法参数会被拦截。</p>
+      <div class="verify"><strong>验证方法：</strong>传入超出范围的参数时，Pydantic 抛出校验错误，模型得到的 schema 中已包含约束信息。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex6.3"><label>已完成练习 6.3</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 6.4：封装自动工具循环 <span class="ex-level">（高级）</span></div>
+      <p>把 6.8 的 <code>run_tool_loop</code> 独立成函数，处理一个需要连续调用两次工具的问题（如「查 A 城市天气 → 查 B 城市天气 → 算温差」）。</p>
+      <div class="verify"><strong>验证方法：</strong>循环正确执行了多次工具调用后返回最终答案，且设置了 max_steps 防止死循环。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex6.4"><label>已完成练习 6.4</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="05-rag.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">05 检索增强生成（RAG）</span></a>
+      <a href="07-agent.html" class="next"><span class="dir">下一页 →</span><span class="lbl">07 智能体（Agent）</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>

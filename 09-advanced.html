@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="page-id" content="advanced">
+<title>09 高级主题与生产化 · LangChain 1.2 教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">LC</span> LangChain 1.2</div>
+    <div class="subtitle">从入门到企业级实战 · 完整学习路径</div>
+    <ul class="toc">
+      <li class="phase">阶段一 · 入门</li>
+      <li><a href="index.html">00 首页与学习路径</a></li>
+      <li><a href="01-setup.html">01 环境搭建与快速上手</a></li>
+      <li><a href="02-chain.html">02 链（Chain）</a></li>
+      <li><a href="03-prompt.html">03 提示模板（Prompt Template）</a></li>
+      <li><a href="04-memory.html">04 记忆（Memory）</a></li>
+      <li class="phase">阶段二 · 进阶</li>
+      <li><a href="05-rag.html">05 检索增强生成（RAG）</a></li>
+      <li><a href="06-tools.html">06 工具调用（Tool Calling）</a></li>
+      <li><a href="07-agent.html">07 智能体（Agent）</a></li>
+      <li class="phase">阶段三 · 实战</li>
+      <li><a href="08-project.html">08 企业级 Agent 实战</a></li>
+      <li><a href="09-advanced.html" class="active">09 高级主题与生产化</a></li>
+      <li><a href="10-appendix.html">10 附录与资源</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div class="progress-label">阅读进度</div>
+    </div>
+
+    <div class="page-head">
+      <h1>09 高级主题与生产化</h1>
+      <div class="meta">
+        <span class="badge phase">阶段三 · 实战</span>
+        <span class="badge difficulty-高级">难度：高级</span>
+        <span class="badge preq">前置：07–08</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>学习目标</h4>
+        <ul>
+          <li>掌握流式输出与回调机制</li>
+          <li>理解 LangGraph 与状态化工作流</li>
+          <li>了解性能优化、安全与可观测性</li>
+        </ul>
+      </div>
+      <div class="info-box">
+        <h4>前置知识</h4>
+        <ul>
+          <li>Agent 与实战项目（07–08）</li>
+          <li>基本的生产部署概念</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="streaming">9.1 流式输出</h2>
+    <p>长回答如果等全部生成完才显示，体验很差。用 <code>stream</code> 逐 token 输出：</p>
+
+    <pre><code data-lang="python">from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+prompt = ChatPromptTemplate.from_template("写一篇关于{主题}的短文")
+
+chain = prompt | model
+
+for chunk in chain.stream({"主题": "人工智能"}):
+    print(chunk.content, end="", flush=True)   # 逐字打印</code></pre>
+
+    <p>Agent 的流式输出更复杂，会流式返回中间状态（thought、工具调用、最终答案）：</p>
+
+    <pre><code data-lang="python">for chunk in agent.stream({"messages": [("user", "...")]}, stream_mode="values"):
+    last = chunk["messages"][-1]
+    if hasattr(last, "tool_calls") and last.tool_calls:
+        print(f"\n[调用工具] {last.tool_calls[0]['name']}")
+    elif last.content:
+        print(f"\n[回答] {last.content}")</code></pre>
+
+    <h2 id="callbacks">9.2 回调与可观测性</h2>
+    <p>生产环境必须能<strong>观测</strong> Agent 的运行：记录每次模型调用、工具调用、耗时、token 用量、报错。LangChain 通过回调系统实现：</p>
+
+    <pre><code data-lang="python">from langchain_core.callbacks import BaseCallbackHandler
+
+class MyHandler(BaseCallbackHandler):
+    def on_llm_start(self, serialized, prompts, **kwargs):
+        print(f"[LLM 开始] {len(prompts)} 个提示")
+
+    def on_llm_end(self, response, **kwargs):
+        usage = response.llm_output.get("token_usage", {})
+        print(f"[LLM 结束] tokens={usage}")
+
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        print(f"[工具开始] {serialized.get('name')}")
+
+# 全局注入
+agent = create_agent(model=model, tools=[...])
+result = agent.invoke({...}, config={"callbacks": [MyHandler()]})</code></pre>
+
+    <div class="callout tip">
+      <span class="ct-title">💡 生产级可观测性</span>
+      推荐接入专业平台（如 LangSmith、Langfuse、Phoenix），它们能自动记录完整的调用链、token 成本、延迟、质量评估。手写回调适合快速调试，正式上线建议用成熟方案。
+    </div>
+
+    <h2 id="langgraph">9.3 LangGraph 与状态化工作流</h2>
+    <p>当 Agent 需要<strong>显式状态、条件分支、循环、人工介入、多智能体协作</strong>时，LCEL 的线性管道就不够用了。这时用 <strong>LangGraph</strong>，它把应用建模为「节点（node）+ 边（edge）」的图：</p>
+
+    <pre><code data-lang="python"># 安装
+pip install "langgraph>=1.0"
+
+from langgraph.graph import StateGraph, START, END
+from typing_extensions import TypedDict
+
+class State(TypedDict):
+    question: str
+    answer: str
+
+def answer_node(state: State) -> dict:
+    return {"answer": model.invoke(state["question"]).content}
+
+builder = StateGraph(State)
+builder.add_node("answer", answer_node)
+builder.add_edge(START, "answer")
+builder.add_edge("answer", END)
+
+graph = builder.compile()
+print(graph.invoke({"question": "什么是 LangGraph？"}))</code></pre>
+
+    <p>LangGraph 的核心价值：</p>
+    <ul>
+      <li><strong>循环</strong>：Agent 的 ReAct 循环本质是「有环的图」，LangGraph 原生支持。</li>
+      <li><strong>人工介入（Human-in-the-loop）</strong>：用 <code>interrupt</code> 在关键节点暂停，等待人工批准。</li>
+      <li><strong>状态持久化</strong>：用 <code>checkpointer</code> 保存图状态，支持恢复与时间旅行调试。</li>
+      <li><strong>多智能体</strong>：多个 Agent 作为子图，相互协作。</li>
+    </ul>
+
+    <h3>条件分支示例</h3>
+    <p>下面用 <code>add_conditional_edges</code> 实现「按问题类型走不同分支」，这是 LangGraph 区别于线性链的核心能力：</p>
+
+    <pre><code data-lang="python">from langgraph.graph import StateGraph, START, END
+from typing_extensions import TypedDict, Literal
+
+class State(TypedDict):
+    question: str
+    answer: str
+
+def route(state: State) -> Literal["order", "policy"]:
+    """根据关键词决定走哪个分支"""
+    if "订单" in state["question"] or "物流" in state["question"]:
+        return "order"
+    return "policy"
+
+def order_node(state: State) -> dict:
+    return {"answer": f"[订单分支] 处理订单问题：{state['question']}"}
+
+def policy_node(state: State) -> dict:
+    return {"answer": f"[政策分支] 处理政策问题：{state['question']}"}
+
+builder = StateGraph(State)
+builder.add_node("order", order_node)
+builder.add_node("policy", policy_node)
+builder.add_conditional_edges(START, route)  # 按 route 结果分流
+builder.add_edge("order", END)
+builder.add_edge("policy", END)
+
+graph = builder.compile()
+print(graph.invoke({"question": "我的订单怎么还没到？"}))</code></pre>
+
+    <pre class="output"><code>{'answer': '[订单分支] 处理订单问题：我的订单怎么还没到？'}</code></pre>
+
+    <h2 id="deploy">9.5 部署方案</h2>
+    <p>把 Agent 变成可对外服务的 API，常见两种路径：</p>
+    <table>
+      <thead><tr><th>方案</th><th>适用场景</th><th>技术栈</th></tr></thead>
+      <tbody>
+        <tr><td><strong>FastAPI 服务</strong></td><td>自建后端，灵活控制</td><td>FastAPI + LangChain + uvicorn</td></tr>
+        <tr><td><strong>LangServe</strong></td><td>快速把链/Agent 发布为 REST API</td><td>LangServe（LangChain 官方）</td></tr>
+        <tr><td><strong>LangGraph Platform</strong></td><td>生产级部署、持久化、监控</td><td>LangGraph Cloud / 自托管</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code data-lang="python"># FastAPI 最小示例
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class AskRequest(BaseModel):
+    question: str
+
+@app.post("/ask")
+def ask(req: AskRequest):
+    # 复用第 08 章的 agent
+    result = agent.invoke({"messages": [("user", req.question)]})
+    return {"answer": result["messages"][-1].content}
+
+# 运行：uvicorn main:app --reload</code></pre>
+
+    <div class="callout best">
+      <span class="ct-title">✅ 最佳实践：部署注意事项</span>
+      上线前务必处理：<strong>并发控制</strong>（Agent 多轮调用耗时长，用异步 + 队列）、<strong>超时</strong>（设置请求上限）、<strong>限流</strong>（防成本攻击）、<strong>密钥管理</strong>（用云密钥服务）、<strong>日志与监控</strong>（可观测性）。
+    </div>
+
+    <h2 id="perf">9.6 性能优化</h2>
+    <table>
+      <thead><tr><th>方面</th><th>优化手段</th></tr></thead>
+      <tbody>
+        <tr><td>延迟</td><td>流式输出、并行（RunnableParallel）、用更小的模型做简单步骤</td></tr>
+        <tr><td>成本</td><td>缓存 LLM 响应、控制历史长度、本地嵌入模型</td></tr>
+        <tr><td>吞吐</td><td>异步（ainvoke/astream）、批量（batch）、连接池</td></tr>
+        <tr><td>RAG 检索</td><td>索引优化、混合检索、重排序、结果缓存</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code data-lang="python"># 响应缓存示例：相同输入直接返回缓存
+from langchain_core.caches import InMemoryCache
+from langchain_core.globals import set_llm_cache
+
+set_llm_cache(InMemoryCache())   # 生产可用 Redis/SQLite 缓存</code></pre>
+
+    <h2 id="security">9.7 安全清单</h2>
+    <div class="callout danger">
+      <span class="ct-title">❌ 安全红线清单</span>
+      <ul>
+        <li><strong>提示注入</strong>：外部内容（网页、文档、用户输入）可能诱导模型越权。明确「外部内容不可信」。</li>
+        <li><strong>数据泄露</strong>：不要把密钥、客户隐私塞进提示词；日志脱敏。</li>
+        <li><strong>工具越权</strong>：写操作需人审 + 权限校验 + 审计日志。</li>
+        <li><strong>输出校验</strong>：模型输出用于下游（如 SQL、代码执行）前必须校验/沙箱。</li>
+        <li><strong>成本攻击</strong>：限制单用户调用频率、最大 token、最大迭代次数。</li>
+      </ul>
+    </div>
+
+    <h2 id="checklist">9.8 生产上线检查清单</h2>
+    <div class="check-item"><input type="checkbox" data-check-id="prod1"><label>配置了日志与可观测性（记录 token、耗时、错误）</label></div>
+    <div class="check-item"><input type="checkbox" data-check-id="prod2"><label>设置了最大迭代次数与超时兜底，避免死循环</label></div>
+    <div class="check-item"><input type="checkbox" data-check-id="prod3"><label>敏感操作有人工确认与权限校验</label></div>
+    <div class="check-item"><input type="checkbox" data-check-id="prod4"><label>对话历史加密存储、有 TTL、可删除</label></div>
+    <div class="check-item"><input type="checkbox" data-check-id="prod5"><label>有提示注入防护与输出校验</label></div>
+    <div class="check-item"><input type="checkbox" data-check-id="prod6"><label>有响应缓存与限流，控制成本</label></div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 9.1：加流式与回调 <span class="ex-level">（高级）</span></div>
+      <p>给第 08 章的客服 Agent 加上流式输出和一个记录工具调用的回调处理器。</p>
+      <div class="verify"><strong>验证方法：</strong>能看到逐字输出，且控制台打印每次工具调用的名称与 token 用量。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex9.1"><label>已完成练习 9.1</label></div>
+    </div>
+
+    <div class="exercise">
+      <div class="ex-title">练习 9.2：LangGraph 建模 <span class="ex-level">（高级）</span></div>
+      <p>用 LangGraph 把「客服 Agent」改造成带条件的图：先判断是「查订单」还是「查政策」，再走不同分支。</p>
+      <div class="verify"><strong>验证方法：</strong>不同问题走不同节点，状态在节点间正确传递，能可视化打印图结构（<code>graph.get_graph()</code>）。</div>
+      <div class="check-item"><input type="checkbox" data-check-id="ex9.2"><label>已完成练习 9.2</label></div>
+    </div>
+
+    <div class="page-nav">
+      <a href="08-project.html" class="prev"><span class="dir">← 上一页</span><span class="lbl">08 企业级 Agent 实战</span></a>
+      <a href="10-appendix.html" class="next"><span class="dir">下一页 →</span><span class="lbl">10 附录与资源</span></a>
+    </div>
+  </main>
+</div>
+<script src="assets/script.js"></script>
+</body>
+</html>
